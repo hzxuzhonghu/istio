@@ -124,7 +124,7 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(env *model.Environme
 			inputParams.Service = service
 			inputParams.Port = port
 
-			lbEndpoints := buildLocalityLbEndpoints(env, networkView, service, port.Port, nil)
+			lbEndpoints := buildLocalityLbEndpoints(env, &proxy.Locality, networkView, service, port.Port, nil)
 
 			// create default cluster
 			discoveryType := convertResolution(service.Resolution)
@@ -149,7 +149,7 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(env *model.Environme
 					// clusters with discovery type STATIC, STRICT_DNS or LOGICAL_DNS rely on cluster.hosts field
 					// ServiceEntry's need to filter hosts based on subset.labels in order to perform weighted routing
 					if discoveryType != v2.Cluster_EDS && len(subset.Labels) != 0 {
-						lbEndpoints = buildLocalityLbEndpoints(env, networkView, service, port.Port, []model.Labels{subset.Labels})
+						lbEndpoints = buildLocalityLbEndpoints(env, &proxy.Locality, networkView, service, port.Port, []model.Labels{subset.Labels})
 					}
 					subsetCluster := buildDefaultCluster(env, subsetClusterName, discoveryType, lbEndpoints)
 					updateEds(subsetCluster)
@@ -186,7 +186,7 @@ func (configgen *ConfigGeneratorImpl) buildOutboundSniDnatClusters(env *model.En
 			if port.Protocol == model.ProtocolUDP {
 				continue
 			}
-			lbEndpoints := buildLocalityLbEndpoints(env, networkView, service, port.Port, nil)
+			lbEndpoints := buildLocalityLbEndpoints(env, &proxy.Locality, networkView, service, port.Port, nil)
 
 			// create default cluster
 			discoveryType := convertResolution(service.Resolution)
@@ -206,7 +206,7 @@ func (configgen *ConfigGeneratorImpl) buildOutboundSniDnatClusters(env *model.En
 					// clusters with discovery type STATIC, STRICT_DNS or LOGICAL_DNS rely on cluster.hosts field
 					// ServiceEntry's need to filter hosts based on subset.labels in order to perform weighted routing
 					if discoveryType != v2.Cluster_EDS && len(subset.Labels) != 0 {
-						lbEndpoints = buildLocalityLbEndpoints(env, networkView, service, port.Port, []model.Labels{subset.Labels})
+						lbEndpoints = buildLocalityLbEndpoints(env, &proxy.Locality, networkView, service, port.Port, []model.Labels{subset.Labels})
 					}
 					subsetCluster := buildDefaultCluster(env, subsetClusterName, discoveryType, lbEndpoints)
 					subsetCluster.TlsContext = nil
@@ -236,8 +236,13 @@ func updateEds(cluster *v2.Cluster) {
 	}
 }
 
-func buildLocalityLbEndpoints(env *model.Environment, proxyNetworkView map[string]bool, service *model.Service,
-	port int, labels model.LabelsCollection) []endpoint.LocalityLbEndpoints {
+func buildLocalityLbEndpoints(
+	env *model.Environment,
+	proxyLocality *core.Locality,
+	proxyNetworkView map[string]bool,
+	service *model.Service,
+	port int,
+	labels model.LabelsCollection) []endpoint.LocalityLbEndpoints {
 
 	if service.Resolution != model.DNSLB {
 		return nil
@@ -274,16 +279,17 @@ func buildLocalityLbEndpoints(env *model.Environment, proxyNetworkView map[strin
 		lbEndpoints[locality] = append(lbEndpoints[locality], ep)
 	}
 
-	LocalityLbEndpoints := make([]endpoint.LocalityLbEndpoints, len(lbEndpoints))
-
+	localityLbEndpoints := make([]endpoint.LocalityLbEndpoints, len(lbEndpoints))
 	for locality, eps := range lbEndpoints {
-		LocalityLbEndpoints = append(LocalityLbEndpoints, endpoint.LocalityLbEndpoints{
+		localityLbEndpoints = append(localityLbEndpoints, endpoint.LocalityLbEndpoints{
 			Locality:    util.ConvertLocality(locality),
 			LbEndpoints: eps,
 		})
 	}
 
-	return util.LocalityLbWeightNormalize(LocalityLbEndpoints)
+	localityLbEndpoints = util.SetLocalityPriority(proxyLocality, localityLbEndpoints)
+
+	return util.LocalityLbWeightNormalize(localityLbEndpoints)
 }
 
 func buildInboundLocalityLbEndpoints(port int) []endpoint.LocalityLbEndpoints {

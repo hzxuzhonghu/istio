@@ -167,6 +167,31 @@ func LocalityLbWeightNormalize(endpoints []endpoint.LocalityLbEndpoints) []endpo
 	return out
 }
 
+func calculatePriority(proxyLocality, epLocality *core.Locality) uint32 {
+	switch {
+	case proxyLocality.SubZone == epLocality.SubZone && proxyLocality.Zone == epLocality.Zone && proxyLocality.Region == epLocality.Region:
+		return 0
+	case proxyLocality.Zone == epLocality.Zone && proxyLocality.Region == epLocality.Region:
+		return 1
+	case proxyLocality.Region == epLocality.Region:
+		return 2
+	default:
+		return 3
+	}
+}
+
+// SetLocalityPriority wires up LocalityLbEndpoints.Priority according to locality match.
+func SetLocalityPriority(proxyLocality *core.Locality, endpoints []endpoint.LocalityLbEndpoints) []endpoint.LocalityLbEndpoints {
+	priorityMap := map[uint32][]int{}
+	for i := range endpoints {
+		priority := calculatePriority(proxyLocality, endpoints[i].Locality)
+		endpoints[i].Priority = priority
+		priorityMap[priority] = append(priorityMap[priority], i)
+	}
+
+	return endpoints
+}
+
 // GetByAddress returns a listener by its address
 // TODO(mostrowski): consider passing map around to save iteration.
 func GetByAddress(listeners []*xdsapi.Listener, addr string) *xdsapi.Listener {

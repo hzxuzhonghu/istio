@@ -433,6 +433,9 @@ func (s *DiscoveryServer) StreamAggregatedResources(stream ads.AggregatedDiscove
 			nt.Metadata = model.ParseMetadata(discReq.Node.Metadata)
 			// Update the config namespace associated with this proxy
 			nt.ConfigNamespace = model.GetProxyConfigNamespace(&nt)
+			if discReq.Node.Locality != nil {
+				nt.Locality = *discReq.Node.Locality
+			}
 
 			con.mu.Lock()
 			con.modelNode = &nt

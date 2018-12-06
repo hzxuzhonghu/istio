@@ -21,8 +21,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
 	"github.com/gogo/protobuf/types"
-	multierror "github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-multierror"
 
 	meshconfig "istio.io/api/mesh/v1alpha1"
 )
@@ -88,6 +89,9 @@ type Proxy struct {
 
 	// Metadata key-value pairs extending the Node identifier
 	Metadata map[string]string
+
+	// Locality specifying where the proxy is running.
+	Locality core.Locality
 }
 
 // NodeType decides the responsibility of the proxy serves in the mesh
