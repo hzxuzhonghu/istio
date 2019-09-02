@@ -809,7 +809,7 @@ istio.io/operator/pkg/component/feature
 istio.io/operator/pkg/util/fswatch
 istio.io/operator/pkg/vfs
 istio.io/operator/pkg/compare
-# istio.io/pkg v0.0.0-20190813222952-67b4f108fe0e
+# istio.io/pkg v0.0.0-20190830135512-7b8fd56b3c8f
 istio.io/pkg/collateral
 istio.io/pkg/log
 istio.io/pkg/probe
