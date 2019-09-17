@@ -15,18 +15,21 @@
 package v1alpha3
 
 import (
+	"istio.io/istio/pkg/config/constants"
 	"reflect"
 	"sort"
 	"strings"
 
+	"github.com/envoyproxy/go-control-plane/envoy/api/v2/auth"
+	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
+
 	"istio.io/api/networking/v1alpha3"
+	"istio.io/pkg/log"
 
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/util"
 	"istio.io/istio/pkg/config/host"
 	"istio.io/istio/pkg/config/labels"
-
-	"istio.io/pkg/log"
 )
 
 // Match by source labels, the listener port where traffic comes in, the gateway on which the rule is being
@@ -184,11 +187,59 @@ func buildSidecarOutboundTLSFilterChainOpts(env *model.Environment, node *model.
 			sniHosts = []string{string(service.Hostname)}
 		}
 
-		out = append(out, &filterChainOpts{
+		filterChainOpts := &filterChainOpts{
 			sniHosts:         sniHosts,
 			destinationCIDRs: []string{destinationCIDR},
 			networkFilters:   buildOutboundNetworkFiltersWithSingleDestination(env, node, clusterName, listenPort),
-		})
+		}
+
+		setDownstreamTls := false
+		destinationRule := push.DestinationRule(node, service)
+		if destinationRule != nil {
+			rule := destinationRule.Spec.(*v1alpha3.DestinationRule)
+			if tls := rule.GetTrafficPolicy().GetTls(); tls != nil {
+				if tls.Mode == v1alpha3.TLSSettings_SIMPLE {
+					setDownstreamTls = true
+				}
+			}
+			portLevelSettings := rule.GetTrafficPolicy().GetPortLevelSettings()
+			for _, setting := range portLevelSettings {
+				number := setting.GetPort().GetNumber()
+				if int(number) == port {
+					if setting.Tls.Mode == v1alpha3.TLSSettings_SIMPLE {
+						setDownstreamTls = true
+					} else {
+						setDownstreamTls = false
+					}
+					break
+				}
+			}
+		}
+
+		if setDownstreamTls {
+			certChainPath := model.GetOrDefaultFromMap(node.Metadata, model.NodeMetadataTLSServerCertChain, constants.DefaultCertChain)
+			privateKeyPath := model.GetOrDefaultFromMap(node.Metadata, model.NodeMetadataTLSServerKey, constants.DefaultKey)
+			filterChainOpts.tlsContext = &auth.DownstreamTlsContext{
+				CommonTlsContext: &auth.CommonTlsContext{
+					ValidationContextType: &auth.CommonTlsContext_ValidationContext{},
+					TlsCertificates: []*auth.TlsCertificate{
+						{
+							CertificateChain: &core.DataSource{
+								Specifier: &core.DataSource_Filename{
+									Filename: certChainPath,
+								},
+							},
+							PrivateKey: &core.DataSource{
+								Specifier: &core.DataSource_Filename{
+									Filename: privateKeyPath,
+								},
+							},
+						},
+					},
+				},
+			}
+		}
+		out = append(out, filterChainOpts)
 	}
 
 	return out
