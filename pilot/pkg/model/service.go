@@ -500,6 +500,16 @@ func (ports PortList) GetByPort(num int) (*Port, bool) {
 	return nil, false
 }
 
+// Contains returns true if ports contains port
+func (ports PortList) Contains(port *Port) bool {
+	for i := range ports {
+		if ports[i].Port == port.Port && ports[i].Name == port.Name && ports[i].Protocol == port.Protocol {
+			return true
+		}
+	}
+	return false
+}
+
 // External predicate checks whether the service is external
 func (s *Service) External() bool {
 	return s.MeshExternal

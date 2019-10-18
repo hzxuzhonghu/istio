@@ -270,13 +270,14 @@ func (s *DiscoveryServer) updateServiceShards(push *model.PushContext) error {
 	for _, svc := range push.Services(nil) {
 		for _, registry := range nonK8sRegistries {
 			// in case this svc does not belong to the registry
-			if svc, _ := registry.GetService(svc.Hostname); svc == nil {
+			svcInRegistry, _ := registry.GetService(svc.Hostname)
+			if svcInRegistry == nil {
 				continue
 			}
 
 			entries := make([]*model.IstioEndpoint, 0)
 			for _, port := range svc.Ports {
-				if port.Protocol == protocol.UDP {
+				if port.Protocol == protocol.UDP || !svcInRegistry.Ports.Contains(port) {
 					continue
 				}
 
