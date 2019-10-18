@@ -138,8 +138,10 @@ func buildOutboundNetworkFiltersWithWeightedClusters(env *model.Environment, nod
 	}
 
 	for _, route := range routes {
-		service := node.SidecarScope.ServiceForHostname(host.Name(route.Destination.Host), push.ServiceByHostnameAndNamespace)
 		if route.Weight > 0 {
+			dstHost := route.Destination.Host
+			dstPort := route.Destination.GetPort().GetNumber()
+			service := node.SidecarScope.ServiceForHostnameAndPort(host.Name(dstHost), int(dstPort), push.ServiceByHostnameAndNamespace)
 			clusterName := istio_route.GetDestinationCluster(route.Destination, service, port.Port)
 			clusterSpecifier.WeightedClusters.Clusters = append(clusterSpecifier.WeightedClusters.Clusters, &tcp_proxy.TcpProxy_WeightedCluster_ClusterWeight{
 				Name:   clusterName,
@@ -188,7 +190,9 @@ func buildOutboundNetworkFilters(env *model.Environment, node *model.Proxy,
 	port *model.Port, configMeta model.ConfigMeta) []*listener.Filter {
 
 	if len(routes) == 1 {
-		service := node.SidecarScope.ServiceForHostname(host.Name(routes[0].Destination.Host), push.ServiceByHostnameAndNamespace)
+		dstHost := routes[0].Destination.Host
+		dstPort := routes[0].Destination.GetPort().GetNumber()
+		service := node.SidecarScope.ServiceForHostnameAndPort(host.Name(dstHost), int(dstPort), push.ServiceByHostnameAndNamespace)
 		clusterName := istio_route.GetDestinationCluster(routes[0].Destination, service, port.Port)
 		return buildOutboundNetworkFiltersWithSingleDestination(env, node, clusterName, port)
 	}

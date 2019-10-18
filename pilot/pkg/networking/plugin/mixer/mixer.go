@@ -490,20 +490,20 @@ func modifyOutboundRouteConfig(push *model.PushContext, in *plugin.InputParams, 
 	case *route.Route_Route:
 		switch upstreams := action.Route.ClusterSpecifier.(type) {
 		case *route.RouteAction_Cluster:
-			_, _, hostname, _ := model.ParseSubsetKey(upstreams.Cluster)
+			_, _, hostname, port := model.ParseSubsetKey(upstreams.Cluster)
 			var attrs attributes
 			if hostname == "" && upstreams.Cluster == util.PassthroughCluster {
 				attrs = addVirtualDestinationServiceAttributes(make(attributes), util.PassthroughCluster)
 			} else {
-				svc := in.Node.SidecarScope.ServiceForHostname(hostname, push.ServiceByHostnameAndNamespace)
+				svc := in.Node.SidecarScope.ServiceForHostnameAndPort(hostname, port, push.ServiceByHostnameAndNamespace)
 				attrs = addDestinationServiceAttributes(make(attributes), svc)
 			}
 			addFilterConfigToRoute(in, httpRoute, attrs, isXDSMarshalingToAnyEnabled)
 
 		case *route.RouteAction_WeightedClusters:
 			for _, weighted := range upstreams.WeightedClusters.Clusters {
-				_, _, hostname, _ := model.ParseSubsetKey(weighted.Name)
-				svc := in.Node.SidecarScope.ServiceForHostname(hostname, push.ServiceByHostnameAndNamespace)
+				_, _, hostname, port := model.ParseSubsetKey(weighted.Name)
+				svc := in.Node.SidecarScope.ServiceForHostnameAndPort(hostname, port, push.ServiceByHostnameAndNamespace)
 				attrs := addDestinationServiceAttributes(make(attributes), svc)
 				if isXDSMarshalingToAnyEnabled {
 					weighted.TypedPerFilterConfig = addTypedServiceConfig(weighted.TypedPerFilterConfig, &mccpb.ServiceConfig{

@@ -103,8 +103,8 @@ type DiscoveryServer struct {
 	mutex sync.RWMutex
 
 	// EndpointShards for a service. This is a global (per-server) list, built from
-	// incremental updates. This is keyed by service and namespace
-	EndpointShardsByService map[string]map[string]*EndpointShards
+	// incremental updates. This is keyed by service fqdn and port
+	EndpointShardsByService map[string]map[int]*EndpointShards
 
 	pushChannel chan *model.PushRequest
 

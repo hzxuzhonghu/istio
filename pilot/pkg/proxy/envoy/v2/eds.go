@@ -217,7 +217,7 @@ func (s *DiscoveryServer) updateClusterInc(push *model.PushContext, clusterName 
 
 	s.mutex.RLock()
 	// The service was never updated - do the full update
-	se, f := s.EndpointShardsByService[string(hostname)][svc.Attributes.Namespace]
+	se, f := s.EndpointShardsByService[string(hostname)][svcPort.Port]
 	s.mutex.RUnlock()
 	if !f {
 		return s.updateCluster(push, clusterName, edsCluster)
@@ -303,9 +303,8 @@ func (s *DiscoveryServer) updateServiceShards(push *model.PushContext) error {
 						MTLSReady:       ep.MTLSReady,
 					})
 				}
+				s.edsUpdate(registry.ClusterID, string(svc.Hostname), svc.Attributes.Namespace, port.Port, entries, true)
 			}
-
-			s.edsUpdate(registry.ClusterID, string(svc.Hostname), svc.Attributes.Namespace, entries, true)
 		}
 	}
 
@@ -415,16 +414,16 @@ func (s *DiscoveryServer) edsIncremental(version string, push *model.PushContext
 // It replaces InstancesByPort in model - instead of iterating over all endpoints it uses
 // the hostname-keyed map. And it avoids the conversion from Endpoint to ServiceEntry to envoy
 // on each step: instead the conversion happens once, when an endpoint is first discovered.
-func (s *DiscoveryServer) EDSUpdate(clusterID, serviceName string, namespace string,
+func (s *DiscoveryServer) EDSUpdate(clusterID, serviceName, namespace string, servicePort int,
 	istioEndpoints []*model.IstioEndpoint) error {
 	inboundEDSUpdates.Increment()
-	s.edsUpdate(clusterID, serviceName, namespace, istioEndpoints, false)
+	s.edsUpdate(clusterID, serviceName, namespace, servicePort, istioEndpoints, false)
 	return nil
 }
 
 // edsUpdate updates edsUpdates by clusterID, serviceName, IstioEndpoints,
 // and requests a full/eds push.
-func (s *DiscoveryServer) edsUpdate(clusterID, serviceName string, namespace string,
+func (s *DiscoveryServer) edsUpdate(clusterID, serviceName, namespace string, servicePort int,
 	istioEndpoints []*model.IstioEndpoint, internal bool) {
 	// edsShardUpdate replaces a subset (shard) of endpoints, as result of an incremental
 	// update. The endpoint updates may be grouped by K8S clusters, other service registries
@@ -437,13 +436,13 @@ func (s *DiscoveryServer) edsUpdate(clusterID, serviceName string, namespace str
 	// To prevent memory leak.
 	// Should delete the service EndpointShards, when endpoints deleted or service deleted.
 	if len(istioEndpoints) == 0 {
-		if s.EndpointShardsByService[serviceName][namespace] != nil {
-			s.EndpointShardsByService[serviceName][namespace].mutex.Lock()
-			delete(s.EndpointShardsByService[serviceName][namespace].Shards, clusterID)
-			svcShards := len(s.EndpointShardsByService[serviceName][namespace].Shards)
-			s.EndpointShardsByService[serviceName][namespace].mutex.Unlock()
+		if s.EndpointShardsByService[serviceName][servicePort] != nil {
+			s.EndpointShardsByService[serviceName][servicePort].mutex.Lock()
+			delete(s.EndpointShardsByService[serviceName][servicePort].Shards, clusterID)
+			svcShards := len(s.EndpointShardsByService[serviceName][servicePort].Shards)
+			s.EndpointShardsByService[serviceName][servicePort].mutex.Unlock()
 			if svcShards == 0 {
-				delete(s.EndpointShardsByService[serviceName], namespace)
+				delete(s.EndpointShardsByService[serviceName], servicePort)
 			}
 			adsLog.Infof("Incremental push, service %s has no endpoints", serviceName)
 			s.ConfigUpdate(&model.PushRequest{
@@ -458,9 +457,9 @@ func (s *DiscoveryServer) edsUpdate(clusterID, serviceName string, namespace str
 	// Update the data structures for the service.
 	// 1. Find the 'per service' data
 	if _, f := s.EndpointShardsByService[serviceName]; !f {
-		s.EndpointShardsByService[serviceName] = map[string]*EndpointShards{}
+		s.EndpointShardsByService[serviceName] = map[int]*EndpointShards{}
 	}
-	ep, f := s.EndpointShardsByService[serviceName][namespace]
+	ep, f := s.EndpointShardsByService[serviceName][servicePort]
 	if !f {
 		// This endpoint is for a service that was not previously loaded.
 		// Return an error to force a full sync, which will also cause the
@@ -469,7 +468,7 @@ func (s *DiscoveryServer) edsUpdate(clusterID, serviceName string, namespace str
 			Shards:          map[string][]*model.IstioEndpoint{},
 			ServiceAccounts: map[string]bool{},
 		}
-		s.EndpointShardsByService[serviceName][namespace] = ep
+		s.EndpointShardsByService[serviceName][servicePort] = ep
 		if !internal {
 			adsLog.Infof("Full push, new service %s", serviceName)
 			requireFull = true
@@ -598,7 +597,7 @@ func (s *DiscoveryServer) loadAssignmentsForClusterIsolated(proxy *model.Proxy, 
 	subsetLabels := push.SubsetToLabels(proxy, subsetName, hostname)
 
 	push.Mutex.Lock()
-	svc := proxy.SidecarScope.ServiceForHostname(hostname, push.ServiceByHostnameAndNamespace)
+	svc := proxy.SidecarScope.ServiceForHostnameAndPort(hostname, port, push.ServiceByHostnameAndNamespace)
 	push.Mutex.Unlock()
 	if svc == nil {
 		// Shouldn't happen here - but just in case fallback
@@ -613,7 +612,7 @@ func (s *DiscoveryServer) loadAssignmentsForClusterIsolated(proxy *model.Proxy, 
 
 	// The service was never updated - do the full update
 	s.mutex.RLock()
-	se, f := s.EndpointShardsByService[string(hostname)][svc.Attributes.Namespace]
+	se, f := s.EndpointShardsByService[string(hostname)][svcPort.Port]
 	s.mutex.RUnlock()
 	if !f {
 		// Shouldn't happen here - but just in case fallback

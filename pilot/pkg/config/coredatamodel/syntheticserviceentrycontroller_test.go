@@ -48,7 +48,7 @@ func (f *FakeXdsUpdater) ConfigUpdate(req *model.PushRequest) {
 	f.Events <- "ConfigUpdate"
 }
 
-func (f *FakeXdsUpdater) EDSUpdate(shard, hostname, ns string, entry []*model.IstioEndpoint) error {
+func (f *FakeXdsUpdater) EDSUpdate(shard, hostname, ns string, port int, entry []*model.IstioEndpoint) error {
 	f.Events <- "EDSUpdate"
 	f.Endpoints <- entry
 	return <-f.EDSErr
