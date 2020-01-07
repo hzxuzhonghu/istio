@@ -2156,11 +2156,11 @@ func mergeTCPFilterChains(incoming []*listener.FilterChain, pluginParams *plugin
 
 	compareWithExisting:
 		for _, existingFilterChain := range currentListenerEntry.listener.FilterChains {
-			if existingFilterChain.FilterChainMatch == nil {
+			if existingFilterChain.FilterChainMatch == nil || reflect.DeepEqual(existingFilterChain.FilterChainMatch, &listener.FilterChainMatch{}) {
 				// This is a catch all filter chain.
 				// We can only merge with a non-catch all filter chain
 				// Else mark it as conflict
-				if incomingFilterChain.FilterChainMatch == nil {
+				if incomingFilterChain.FilterChainMatch == nil || reflect.DeepEqual(incomingFilterChain.FilterChainMatch, &listener.FilterChainMatch{}) {
 					// NOTE: While pluginParams.Service can be nil,
 					// this code cannot be reached if Service is nil because a pluginParams.Service can be nil only
 					// for user defined Egress listeners with ports. And these should occur in the API before
@@ -2189,7 +2189,7 @@ func mergeTCPFilterChains(incoming []*listener.FilterChain, pluginParams *plugin
 					continue
 				}
 			}
-			if incomingFilterChain.FilterChainMatch == nil {
+			if incomingFilterChain.FilterChainMatch == nil || reflect.DeepEqual(incomingFilterChain.FilterChainMatch, &listener.FilterChainMatch{}) {
 				continue
 			}
 
