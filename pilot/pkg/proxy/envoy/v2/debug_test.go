@@ -232,16 +232,26 @@ func TestConfigDump(t *testing.T) {
 			if err := sendCDSReq(sidecarID(app3Ip, "dumpApp"), envoy); err != nil {
 				t.Fatal(err)
 			}
+			_, err = adsReceive(envoy, 5*time.Second)
+			if err != nil {
+				t.Fatal("CDS Recv failed", err)
+			}
+
 			if err := sendLDSReq(sidecarID(app3Ip, "dumpApp"), envoy); err != nil {
 				t.Fatal(err)
 			}
+			_, err = adsReceive(envoy, 5*time.Second)
+			if err != nil {
+				t.Fatal("LDS failed", err)
+			}
+
 			// Only most recent proxy will have routes
 			if err := sendRDSReq(sidecarID(app3Ip, "dumpApp"), []string{"80", "8080"}, "", envoy); err != nil {
 				t.Fatal(err)
 			}
 			_, err = adsReceive(envoy, 5*time.Second)
 			if err != nil {
-				t.Fatal("Recv failed", err)
+				t.Fatal("RDS Recv failed", err)
 			}
 
 			wrapper := getConfigDump(t, s.EnvoyXdsServer, tt.proxyID, tt.wantCode)
