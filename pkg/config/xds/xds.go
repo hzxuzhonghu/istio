@@ -33,7 +33,7 @@ import (
 )
 
 // nolint: interfacer
-func BuildXDSObjectFromStruct(applyTo networking.EnvoyFilter_ApplyTo, value *types.Struct) (proto.Message, error) {
+func BuildXDSObjectFromStruct(applyTo networking.EnvoyFilter_ApplyTo, value *types.Any) (proto.Message, error) {
 	if value == nil {
 		// for remove ops
 		return nil, nil
@@ -60,13 +60,14 @@ func BuildXDSObjectFromStruct(applyTo networking.EnvoyFilter_ApplyTo, value *typ
 		return nil, fmt.Errorf("Envoy filter: unknown object type for applyTo %s", applyTo.String()) // nolint: golint,stylecheck
 	}
 
+	fmt.Println("====", value)
 	if err := GogoStructToMessage(value, obj); err != nil {
 		return nil, fmt.Errorf("Envoy filter: %v", err) // nolint: golint,stylecheck
 	}
 	return obj, nil
 }
 
-func GogoStructToMessage(pbst *types.Struct, out proto.Message) error {
+func GogoStructToMessage(pbst *types.Any, out proto.Message) error {
 	if pbst == nil {
 		return errors.New("nil struct")
 	}

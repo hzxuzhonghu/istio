@@ -45,6 +45,21 @@ func TestConvert(t *testing.T) {
 		Spec: mock.ExampleVirtualService,
 	}
 
+	config := model.Config{
+		ConfigMeta: model.ConfigMeta{
+			Type:            collections.IstioNetworkingV1Alpha3Envoyfilters.Resource().Kind(),
+			Group:           "networking.istio.io",
+			Version:         "v1alpha3",
+			Name:            "test",
+			Namespace:       "default",
+			Domain:          "cluster",
+			ResourceVersion: "1234",
+			Labels:          map[string]string{"label": "value"},
+			Annotations:     map[string]string{"annotation": "value"},
+		},
+		Spec: mock.ExampleVirtualService,
+	}
+
 	obj, err := ConvertConfig(collections.IstioNetworkingV1Alpha3Virtualservices, config)
 	if err != nil {
 		t.Errorf("ConvertConfig() => unexpected error %v", err)
