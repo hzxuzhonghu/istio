@@ -68,7 +68,7 @@ func (s *Server) initCertController(args *PilotArgs) error {
 		return nil
 	}
 
-	k8sClient := s.kubeClient
+	k8sClient := s.kubeClient.Kube()
 	for _, c := range meshConfig.GetCertificates() {
 		name := strings.Join(c.GetDnsNames(), ",")
 		if len(name) == 0 { // must have a DNS name
@@ -139,7 +139,7 @@ func (s *Server) initDNSCerts(hostname, customHost, namespace string) error {
 	var err error
 	if features.PilotCertProvider.Get() == KubernetesCAProvider {
 		log.Infof("Generating K8S-signed cert for %v", names)
-		certChain, keyPEM, _, err = chiron.GenKeyCertK8sCA(s.kubeClient.CertificatesV1beta1().CertificateSigningRequests(),
+		certChain, keyPEM, _, err = chiron.GenKeyCertK8sCA(s.kubeClient.Kube().CertificatesV1beta1().CertificateSigningRequests(),
 			strings.Join(names, ","), hostnamePrefix+".csr.secret", namespace, defaultCACertPath)
 
 		s.caBundlePath = defaultCACertPath
