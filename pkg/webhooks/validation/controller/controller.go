@@ -241,7 +241,7 @@ func newController(
 
 	c := &Controller{
 		o:                        o,
-		client:                   client,
+		client:                   client.Kube(),
 		dynamicResourceInterface: dynamicResourceInterface,
 		queue:                    workqueue.NewRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter()),
 		fw:                       caFileWatcher,
