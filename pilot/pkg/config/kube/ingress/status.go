@@ -78,7 +78,7 @@ func NewStatusSyncer(mesh *meshconfig.MeshConfig, client kubelib.Client) (*Statu
 	queue := queue2.NewQueue(1 * time.Second)
 
 	st := StatusSyncer{
-		client:              client,
+		client:              client.Kube(),
 		ingressLister:       client.KubeInformer().Networking().V1beta1().Ingresses().Lister(),
 		podLister:           client.KubeInformer().Core().V1().Pods().Lister(),
 		serviceLister:       client.KubeInformer().Core().V1().Services().Lister(),

@@ -135,7 +135,7 @@ func NewController(client kube.Client, meshWatcher mesh.Holder,
 	serviceInformer := client.KubeInformer().Core().V1().Services()
 
 	var classes v1beta1.IngressClassInformer
-	if ingressClassSupported(client) {
+	if ingressClassSupported(client.Kube()) {
 		classes = client.KubeInformer().Networking().V1beta1().IngressClasses()
 		// Register the informer now, so it will be properly started
 		_ = classes.Informer()
