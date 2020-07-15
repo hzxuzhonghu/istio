@@ -59,7 +59,7 @@ type NamespaceController struct {
 func NewNamespaceController(data func() map[string]string, kubeClient kube.Client) *NamespaceController {
 	c := &NamespaceController{
 		getData: data,
-		client:  kubeClient.CoreV1(),
+		client:  kubeClient.Kube().CoreV1(),
 		queue:   queue.NewQueue(time.Second),
 	}
 
@@ -88,7 +88,7 @@ func NewNamespaceController(data func() map[string]string, kubeClient kube.Clien
 				return
 			}
 			c.queue.Push(func() error {
-				ns, err := kubeClient.CoreV1().Namespaces().Get(context.TODO(), cm.Namespace, metav1.GetOptions{})
+				ns, err := kubeClient.Kube().CoreV1().Namespaces().Get(context.TODO(), cm.Namespace, metav1.GetOptions{})
 				if err != nil {
 					return err
 				}
