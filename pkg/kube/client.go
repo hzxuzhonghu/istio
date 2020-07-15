@@ -76,9 +76,6 @@ const (
 // clients using a shared config. It is expected that all of Istiod can share the same set of clients and
 // informers. Sharing informers is especially important for load on the API server/Istiod itself.
 type Client interface {
-	// TODO - stop embedding this, it will conflict with future additions. Use Kube() instead is preferred
-	// TODO - add istio/client-go and service-apis
-	kubernetes.Interface
 	// RESTConfig returns the Kubernetes rest.Config used to configure the clients.
 	RESTConfig() *rest.Config
 
@@ -177,9 +174,8 @@ const resyncInterval = 0
 
 func NewFakeClient() Client {
 	var c client
-	c.Interface = fake.NewSimpleClientset()
-	c.kube = c.Interface
-	c.kubeInformer = informers.NewSharedInformerFactory(c.Interface, resyncInterval)
+	c.kube = fake.NewSimpleClientset()
+	c.kubeInformer = informers.NewSharedInformerFactory(c.kube, resyncInterval)
 
 	s := runtime.NewScheme()
 	if err := metav1.AddMetaToScheme(s); err != nil {
@@ -205,8 +201,6 @@ func NewFakeClient() Client {
 
 // Client is a helper wrapper around the Kube RESTClient for istioctl -> Pilot/Envoy/Mesh related things
 type client struct {
-	kubernetes.Interface
-
 	// These may be set only when creating an extended client. TODO: remove this entirely
 	clientFactory util.Factory
 	restClient    *rest.RESTClient
@@ -251,12 +245,11 @@ func newClientInternal(clientFactory util.Factory, revision string) (*client, er
 		return nil, err
 	}
 
-	c.Interface, err = kubernetes.NewForConfig(c.config)
-	c.kube = c.Interface
+	c.kube, err = kubernetes.NewForConfig(c.config)
 	if err != nil {
 		return nil, err
 	}
-	c.kubeInformer = informers.NewSharedInformerFactory(c.Interface, resyncInterval)
+	c.kubeInformer = informers.NewSharedInformerFactory(c.kube, resyncInterval)
 
 	c.metadata, err = metadata.NewForConfig(c.config)
 	if err != nil {
@@ -434,7 +427,7 @@ func (c *client) PodLogs(ctx context.Context, podName, podNamespace, container s
 		Container: container,
 		Previous:  previousLog,
 	}
-	res, err := c.CoreV1().Pods(podNamespace).GetLogs(podName, opts).Stream(ctx)
+	res, err := c.kube.CoreV1().Pods(podNamespace).GetLogs(podName, opts).Stream(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -601,7 +594,7 @@ func (c *client) NewPortForwarder(podName, ns, localAddress string, localPort in
 }
 
 func (c *client) PodsForSelector(ctx context.Context, namespace string, labelSelectors ...string) (*v1.PodList, error) {
-	return c.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+	return c.kube.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: strings.Join(labelSelectors, ","),
 	})
 }
