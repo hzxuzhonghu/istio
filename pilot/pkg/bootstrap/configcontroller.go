@@ -151,7 +151,7 @@ func (s *Server) initK8SConfigStore(args *PilotArgs) error {
 	}
 	s.ConfigStores = append(s.ConfigStores, configController)
 	if features.EnableServiceApis {
-		s.ConfigStores = append(s.ConfigStores, gateway.NewController(s.kubeClient, configController, args.RegistryOptions.KubeOptions))
+		s.ConfigStores = append(s.ConfigStores, gateway.NewController(s.kubeClient.Kube(), configController, args.RegistryOptions.KubeOptions))
 	}
 	if features.EnableAnalysis {
 		if err := s.initInprocessAnalysisController(args); err != nil {
@@ -376,7 +376,7 @@ func (s *Server) initInprocessAnalysisController(args *PilotArgs) error {
 
 	s.addStartFunc(func(stop <-chan struct{}) error {
 		go leaderelection.
-			NewLeaderElection(args.Namespace, args.PodName, leaderelection.AnalyzeController, s.kubeClient).
+			NewLeaderElection(args.Namespace, args.PodName, leaderelection.AnalyzeController, s.kubeClient.Kube()).
 			AddRunFunction(func(stop <-chan struct{}) {
 				if err := processing.Start(); err != nil {
 					log.Fatalf("Error starting Background Analysis: %s", err)
@@ -395,14 +395,14 @@ func (s *Server) initStatusController(args *PilotArgs, writeStatus bool) {
 		PodName:        args.PodName,
 	}
 	s.addTerminatingStartFunc(func(stop <-chan struct{}) error {
-		s.statusReporter.Start(s.kubeClient, args.Namespace, s.configController, writeStatus, stop)
+		s.statusReporter.Start(s.kubeClient.Kube(), args.Namespace, s.configController, writeStatus, stop)
 		return nil
 	})
 	s.EnvoyXdsServer.StatusReporter = s.statusReporter
 	if writeStatus {
 		s.addTerminatingStartFunc(func(stop <-chan struct{}) error {
 			leaderelection.
-				NewLeaderElection(args.Namespace, args.PodName, leaderelection.StatusController, s.kubeClient).
+				NewLeaderElection(args.Namespace, args.PodName, leaderelection.StatusController, s.kubeClient.Kube()).
 				AddRunFunction(func(stop <-chan struct{}) {
 					controller := &status.DistributionController{
 						QPS:   float32(features.StatusQPS),

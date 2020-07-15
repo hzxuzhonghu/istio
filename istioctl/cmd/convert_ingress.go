@@ -242,7 +242,7 @@ func convertIngress() *cobra.Command {
 				writer = file
 			}
 
-			return convertConfigs(readers, writer, client)
+			return convertConfigs(readers, writer, client.Kube())
 		},
 	}
 

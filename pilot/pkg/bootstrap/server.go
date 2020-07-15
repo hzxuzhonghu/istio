@@ -1055,7 +1055,7 @@ func (s *Server) maybeCreateCA(caOpts *CAOptions) error {
 		var err error
 		var corev1 v1.CoreV1Interface
 		if s.kubeClient != nil {
-			corev1 = s.kubeClient.CoreV1()
+			corev1 = s.kubeClient.Kube().CoreV1()
 		}
 		// May return nil, if the CA is missing required configs - This is not an error.
 		if s.CA, err = s.createIstioCA(corev1, caOpts); err != nil {

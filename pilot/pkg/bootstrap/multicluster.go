@@ -25,7 +25,7 @@ import (
 func (s *Server) initClusterRegistries(args *PilotArgs) (err error) {
 	if hasKubeRegistry(args.RegistryOptions.Registries) {
 		log.Info("initializing Kubernetes cluster registry")
-		mc, err := controller.NewMulticluster(s.kubeClient,
+		mc, err := controller.NewMulticluster(s.kubeClient.Kube(),
 			args.RegistryOptions.ClusterRegistriesNamespace,
 			args.RegistryOptions.KubeOptions,
 			s.ServiceController(),
