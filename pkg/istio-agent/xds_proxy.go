@@ -81,7 +81,6 @@ type XdsProxy struct {
 	clusterID            string
 	downstreamListener   net.Listener
 	downstreamGrpcServer *grpc.Server
-	istiodAddress        string
 	istiodDialOptions    []grpc.DialOption
 	upstreamConnection   *grpc.ClientConn
 	localDNSServer       *dns.LocalDNSServer
@@ -95,7 +94,6 @@ var proxyLog = log.RegisterScope("xdsproxy", "XDS Proxy in Istio Agent", 0)
 func initXdsProxy(ia *Agent) (*XdsProxy, error) {
 	var err error
 	proxy := &XdsProxy{
-		istiodAddress:  ia.proxyConfig.DiscoveryAddress,
 		clusterID:      ia.secOpts.ClusterID,
 		localDNSServer: ia.localDNSServer,
 		fileWatcher:    newFileWatcher(),
@@ -105,8 +103,6 @@ func initXdsProxy(ia *Agent) (*XdsProxy, error) {
 		agent:          ia,
 	}
 
-	proxyLog.Infof("Initializing with upstream address %s and cluster %s", proxy.istiodAddress, proxy.clusterID)
-
 	if err = proxy.initDownstreamServer(); err != nil {
 		return nil, err
 	}
@@ -115,6 +111,8 @@ func initXdsProxy(ia *Agent) (*XdsProxy, error) {
 			log.Errorf("failed to accept downstream gRPC connection %v", err)
 		}
 	}()
+
+	proxyLog.Infof("Initializing with upstream address %s and cluster %s", ia.proxyConfig.DiscoveryAddress, proxy.clusterID)
 
 	dialOptions, err := proxy.buildUpstreamClientDialOpts(ia)
 	if err != nil {
@@ -138,8 +136,6 @@ func initXdsProxy(ia *Agent) (*XdsProxy, error) {
 // This ensures that a new connection between istiod and agent doesn't end up consuming pending messages from envoy
 // as the new connection may not go to the same istiod. Vice versa case also applies.
 func (p *XdsProxy) StreamAggregatedResources(downstream discovery.AggregatedDiscoveryService_StreamAggregatedResourcesServer) error {
-	proxyLog.Infof("connecting to %s", p.istiodAddress)
-
 	upstreamError := make(chan error)
 	downstreamError := make(chan error)
 	requestsChan := make(chan *discovery.DiscoveryRequest, 10)
