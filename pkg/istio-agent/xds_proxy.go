@@ -83,6 +83,7 @@ type XdsProxy struct {
 	downstreamGrpcServer *grpc.Server
 	istiodAddress        string
 	istiodDialOptions    []grpc.DialOption
+	upstreamConnection   *grpc.ClientConn
 	localDNSServer       *dns.LocalDNSServer
 	healthChecker        *health.WorkloadHealthChecker
 	fileWatcher          filewatcher.FileWatcher
@@ -109,20 +110,27 @@ func initXdsProxy(ia *Agent) (*XdsProxy, error) {
 	if err = proxy.initDownstreamServer(); err != nil {
 		return nil, err
 	}
-
-	if proxy.istiodDialOptions, err = proxy.buildUpstreamClientDialOpts(ia); err != nil {
-		return nil, err
-	}
-
 	go func() {
 		if err := proxy.downstreamGrpcServer.Serve(proxy.downstreamListener); err != nil {
 			log.Errorf("failed to accept downstream gRPC connection %v", err)
 		}
 	}()
 
+	dialOptions, err := proxy.buildUpstreamClientDialOpts(ia)
+	if err != nil {
+		return nil, err
+	}
+
+	proxy.upstreamConnection, err = grpc.Dial(ia.proxyConfig.DiscoveryAddress, dialOptions...)
+	if err != nil {
+		proxyLog.Errorf("failed to connect to upstream %s: %v", ia.proxyConfig.DiscoveryAddress, err)
+		return nil, err
+	}
+
 	if err = proxy.initCertificateWatches(ia, proxy.stopChan); err != nil {
 		return nil, err
 	}
+
 	return proxy, nil
 }
 
@@ -170,14 +178,7 @@ func (p *XdsProxy) StreamAggregatedResources(downstream discovery.AggregatedDisc
 	defer close(stop)
 	go p.healthChecker.PerformApplicationHealthCheck(healthEventsChan, stop)
 
-	upstreamConn, err := grpc.Dial(p.istiodAddress, p.istiodDialOptions...)
-	if err != nil {
-		proxyLog.Errorf("failed to connect to upstream %s: %v", p.istiodAddress, err)
-		return err
-	}
-	defer upstreamConn.Close()
-	proxyLog.Debugf("connected to %s", p.istiodAddress)
-	xds := discovery.NewAggregatedDiscoveryServiceClient(upstreamConn)
+	xds := discovery.NewAggregatedDiscoveryServiceClient(p.upstreamConnection)
 	ctx := metadata.AppendToOutgoingContext(context.Background(), "ClusterID", p.clusterID)
 	if p.agent.cfg.XDSHeaders != nil {
 		for k, v := range p.agent.cfg.XDSHeaders {
@@ -317,6 +318,7 @@ func (p *XdsProxy) DeltaAggregatedResources(server discovery.AggregatedDiscovery
 
 func (p *XdsProxy) close() {
 	p.stopChan <- struct{}{}
+	p.upstreamConnection.Close()
 	if p.downstreamGrpcServer != nil {
 		_ = p.downstreamGrpcServer.Stop
 	}
@@ -436,7 +438,7 @@ func (p *XdsProxy) buildUpstreamClientDialOpts(sa *Agent) ([]grpc.DialOption, er
 	return dialOptions, nil
 }
 
-// initCertificateWatches sets up  watches for the certs and resets upstream if they change.
+// initCertificateWatches sets up watches for the certs and resets upstream if they change.
 func (p *XdsProxy) initCertificateWatches(agent *Agent, stop <-chan struct{}) error {
 	keyFile, certFile := p.getCertKeyPaths(agent)
 	rootCert := agent.FindRootCAForXDS()
