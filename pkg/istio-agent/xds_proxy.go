@@ -91,7 +91,7 @@ type XdsProxy struct {
 
 var proxyLog = log.RegisterScope("xdsproxy", "XDS Proxy in Istio Agent", 0)
 
-func initXdsProxy(ia *Agent) (*XdsProxy, error) {
+func initXdsProxy(ia *Agent, dialOptions ...grpc.DialOption) (*XdsProxy, error) {
 	var err error
 	proxy := &XdsProxy{
 		clusterID:      ia.secOpts.ClusterID,
@@ -113,10 +113,11 @@ func initXdsProxy(ia *Agent) (*XdsProxy, error) {
 	}()
 
 	proxyLog.Infof("Initializing with upstream address %s and cluster %s", ia.proxyConfig.DiscoveryAddress, proxy.clusterID)
-
-	dialOptions, err := proxy.buildUpstreamClientDialOpts(ia)
-	if err != nil {
-		return nil, err
+	if len(dialOptions) == 0 {
+		dialOptions, err = proxy.buildUpstreamClientDialOpts(ia)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	proxy.upstreamConnection, err = grpc.Dial(ia.proxyConfig.DiscoveryAddress, dialOptions...)
