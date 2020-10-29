@@ -285,14 +285,12 @@ data:
         resources: {}
       {{- end }}
         securityContext:
-          allowPrivilegeEscalation: {{ .Values.global.proxy.privileged }}
-          privileged: {{ .Values.global.proxy.privileged }}
+          allowPrivilegeEscalation: true
+          privileged: true
           capabilities:
-        {{- if not .Values.istio_cni.enabled }}
             add:
             - NET_ADMIN
             - NET_RAW
-        {{- end }}
             drop:
             - ALL
         {{- if not .Values.istio_cni.enabled }}

@@ -150,7 +150,7 @@ func (iptConfigurator *IptablesConfigurator) handleInboundPortsInclude() {
 			if ifaceName != "" {
 				// set route local net
 				iptConfigurator.ext.RunOrFail(
-					"echo", "1", ">", fmt.Sprintf("/proc/sys/net/ipv4/conf/%s/route_localnet", ifaceName))
+					"sysctl", "-w", fmt.Sprintf("net.ipv4.conf.%s.route_localnet=1", ifaceName))
 			}
 
 			// Create a new chain for redirecting inbound traffic to the common Envoy
