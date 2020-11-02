@@ -27,6 +27,7 @@ import (
 func TestTproxy(t *testing.T) {
 	framework.
 		NewTest(t).
+		Features("traffic.original-source-ip").
 		RequiresSingleCluster().
 		Run(func(ctx framework.TestContext) {
 			workloads, err := apps.PodA[0].Workloads()
