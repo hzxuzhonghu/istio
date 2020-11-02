@@ -124,13 +124,13 @@ spec:
             cpu: 100m
             memory: 128Mi
         securityContext:
-          allowPrivilegeEscalation: false
+          allowPrivilegeEscalation: true
           capabilities:
             add:
             - NET_ADMIN
             drop:
             - ALL
-          privileged: false
+          privileged: true
           readOnlyRootFilesystem: true
           runAsGroup: 1337
           runAsNonRoot: false
