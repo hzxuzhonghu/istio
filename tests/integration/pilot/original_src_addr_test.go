@@ -35,6 +35,7 @@ func TestTproxy(t *testing.T) {
 				t.Errorf("failed to get Subsets: %v", err)
 				return
 			}
+			// check the server can see the client's original ip
 			checkOriginalSrcIP(ctx, apps.PodA[0], apps.PodTproxy[0], workloads[0].Address())
 		})
 }
@@ -44,8 +45,6 @@ func checkOriginalSrcIP(ctx framework.TestContext, src, dest echo.Instance, expe
 	validator := echo.ValidatorFunc(func(resp client.ParsedResponses, inErr error) error {
 		return resp.CheckIP(expected)
 	})
-	// This is a hack to remain infrastructure agnostic when running these tests
-	// We actually call the host set above not the endpoint we pass
 	_ = src.CallWithRetryOrFail(ctx, echo.CallOptions{
 		Target:    dest,
 		PortName:  "http",
