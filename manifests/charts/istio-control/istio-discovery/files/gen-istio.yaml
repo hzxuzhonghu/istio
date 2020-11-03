@@ -301,8 +301,13 @@ data:
         {{- end }}
       {{- end }}
         securityContext:
-          allowPrivilegeEscalation: {{ .Values.global.proxy.privileged }}
-          privileged: {{ .Values.global.proxy.privileged }}
+        {{ if or (eq (annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode) `TPROXY`)  .Values.global.proxy.privileged }}
+          allowPrivilegeEscalation: true
+          privileged: true
+        {{ else }}
+          allowPrivilegeEscalation: false
+          privileged: false
+        {{- end }}
           capabilities:
         {{- if not .Values.istio_cni.enabled }}
             add:
