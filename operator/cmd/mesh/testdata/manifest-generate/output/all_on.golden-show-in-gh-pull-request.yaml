@@ -5153,8 +5153,13 @@ data:
         {{- end }}
       {{- end }}
         securityContext:
-          allowPrivilegeEscalation: {{ .Values.global.proxy.privileged }}
-          privileged: {{ .Values.global.proxy.privileged }}
+        {{ if or (eq (annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode) `TPROXY`)  .Values.global.proxy.privileged }}
+          allowPrivilegeEscalation: true
+          privileged: true
+        {{ else }}
+          allowPrivilegeEscalation: false
+          privileged: false
+        {{- end }}
           capabilities:
         {{- if not .Values.istio_cni.enabled }}
             add:
@@ -5358,13 +5363,7 @@ data:
           failureThreshold: {{ annotation .ObjectMeta `readiness.status.sidecar.istio.io/failureThreshold` .Values.global.proxy.readinessFailureThreshold }}
         {{ end -}}
         securityContext:
-          {{ if or (eq (annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode) `TPROXY`)  .Values.global.proxy.privileged -}}
-          allowPrivilegeEscalation: true
-          privileged: true
-          {{- else -}}
-          allowPrivilegeEscalation: false
-          privileged: false
-          {{- end }}
+          allowPrivilegeEscalation: {{ .Values.global.proxy.privileged }}
           capabilities:
             {{ if or (eq (annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode) `TPROXY`) (eq (annotation .ObjectMeta `sidecar.istio.io/capNetBindService` .Values.global.proxy.capNetBindService) `true`) -}}
             add:
@@ -5377,6 +5376,7 @@ data:
             {{- end }}
             drop:
             - ALL
+          privileged: {{ .Values.global.proxy.privileged }}
           readOnlyRootFilesystem: {{ not .Values.global.proxy.enableCoreDump }}
           runAsGroup: 1337
           fsGroup: 1337
