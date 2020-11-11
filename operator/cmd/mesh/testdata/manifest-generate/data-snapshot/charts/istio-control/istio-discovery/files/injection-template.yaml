@@ -84,10 +84,13 @@ template: |
     {{- end }}
   {{- end }}
     securityContext:
-    {{ if or (eq (annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode) `TPROXY`)  .Values.global.proxy.privileged }}
+    {{- if .Values.global.proxy.privileged }}
       allowPrivilegeEscalation: true
       privileged: true
-    {{ else }}
+    {{- else if and (eq (annotation .ObjectMeta `sidecar.istio.io/interceptionMode` .ProxyConfig.InterceptionMode) `TPROXY`) (not .Values.istio_cni.enabled)}}
+      allowPrivilegeEscalation: true
+      privileged: true
+    {{- else }}
       allowPrivilegeEscalation: false
       privileged: false
     {{- end }}
