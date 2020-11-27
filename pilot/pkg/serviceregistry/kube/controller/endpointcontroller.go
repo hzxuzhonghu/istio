@@ -34,10 +34,11 @@ import (
 type kubeEndpointsController interface {
 	HasSynced() bool
 	Run(stopCh <-chan struct{})
-	getInformer() cache.SharedIndexInformer
-	onEvent(curr interface{}, event model.Event) error
 	InstancesByPort(c *Controller, svc *model.Service, reqSvcPort int, labelsList labels.Collection) []*model.ServiceInstance
 	GetProxyServiceInstances(c *Controller, proxy *model.Proxy) []*model.ServiceInstance
+
+	getInformer() cache.SharedIndexInformer
+	onEvent(curr interface{}, event model.Event) error
 	buildIstioEndpoints(ep interface{}, host host.Name) []*model.IstioEndpoint
 	buildIstioEndpointsWithService(name, namespace string, host host.Name) []*model.IstioEndpoint
 	// forgetEndpoint does internal bookkeeping on a deleted endpoint
@@ -60,10 +61,10 @@ func (e *kubeEndpoints) Run(stopCh <-chan struct{}) {
 }
 
 // processEndpointEvent triggers the config update.
-func processEndpointEvent(c *Controller, epc kubeEndpointsController, name string, namespace string, event model.Event, ep interface{}) error {
+func (c *Controller) processEndpointEvent(epc kubeEndpointsController, name string, namespace string, event model.Event, ep interface{}) error {
 	// Update internal endpoint cache no matter what kind of service, even headless service.
 	// As for gateways, the cluster discovery type is `EDS` for headless service.
-	updateEDS(c, epc, ep, event)
+	c.updateEDS(epc, ep, event)
 	if features.EnableHeadlessService {
 		if svc, _ := c.serviceLister.Services(namespace).Get(name); svc != nil {
 			// if the service is headless service, trigger a full push.
@@ -87,9 +88,9 @@ func processEndpointEvent(c *Controller, epc kubeEndpointsController, name strin
 	return nil
 }
 
-func updateEDS(c *Controller, epc kubeEndpointsController, ep interface{}, event model.Event) {
-	host, svcName, ns := epc.getServiceInfo(ep)
-	log.Debugf("Handle EDS endpoint %s in namespace %s", svcName, ns)
+func (c *Controller) updateEDS(epc kubeEndpointsController, ep interface{}, event model.Event) {
+	host, _, ns := epc.getServiceInfo(ep)
+	log.Debugf("Handle svc %s EDS endpoint", host)
 	var endpoints []*model.IstioEndpoint
 	if event == model.EventDelete {
 		epc.forgetEndpoint(ep)
@@ -106,7 +107,7 @@ func updateEDS(c *Controller, epc kubeEndpointsController, ep interface{}, event
 			fep := c.collectWorkloadInstanceEndpoints(svc)
 			endpoints = append(endpoints, fep...)
 		} else {
-			log.Infof("Handle EDS endpoint: skip collecting workload entry endpoints, service %s/%s has not been populated", svcName, ns)
+			log.Infof("Handle EDS endpoint: skip collecting workload entry endpoints, service %s has not been populated", host)
 		}
 	}
 
@@ -120,7 +121,7 @@ func updateEDS(c *Controller, epc kubeEndpointsController, ep interface{}, event
 //   this may happen due to eventually consistency issues, out of order events, etc. In this case, the caller
 //   should not precede with the endpoint, or inaccurate information would be sent which may have impacts on
 //   correctness and security.
-func getPod(c *Controller, ip string, ep *metav1.ObjectMeta, targetRef *v1.ObjectReference, host host.Name) (rpod *v1.Pod, expectPod bool) {
+func getPod(c *Controller, ip string, ep *metav1.ObjectMeta, targetRef *v1.ObjectReference, host host.Name) (*v1.Pod, bool) {
 	pod := c.pods.getPodByIP(ip)
 	if pod != nil {
 		return pod, false

@@ -235,46 +235,59 @@ func TestPodCacheEvents(t *testing.T) {
 
 	f := podCache.onEvent
 
-	ip := "172.0.3.35"
+	ip1 := "172.0.3.35"
 	pod1 := metav1.ObjectMeta{Name: "pod1", Namespace: ns}
 	if err := f(&v1.Pod{ObjectMeta: pod1}, model.EventAdd); err != nil {
 		t.Error(err)
 	}
 
-	if err := f(&v1.Pod{ObjectMeta: pod1, Status: v1.PodStatus{PodIP: ip, Phase: v1.PodPending}}, model.EventUpdate); err != nil {
+	if err := f(&v1.Pod{ObjectMeta: pod1, Status: v1.PodStatus{PodIP: ip1, Phase: v1.PodPending}}, model.EventUpdate); err != nil {
 		t.Error(err)
 	}
 
-	if pod, exists := podCache.getPodKey(ip); !exists || pod != "default/pod1" {
+	if pod, exists := podCache.getPodKey(ip1); !exists || pod != "default/pod1" {
 		t.Errorf("getPodKey => got %s, pod1 not found or incorrect", pod)
 	}
 
+	ip2 := "172.0.3.36"
 	pod2 := metav1.ObjectMeta{Name: "pod2", Namespace: ns}
-	if err := f(
-		&v1.Pod{ObjectMeta: pod1, Status: v1.PodStatus{PodIP: ip, Phase: v1.PodFailed}}, model.EventUpdate); err != nil {
+	if err := f(&v1.Pod{ObjectMeta: pod1, Status: v1.PodStatus{PodIP: ip1, Phase: v1.PodFailed}}, model.EventUpdate); err != nil {
 		t.Error(err)
 	}
-	if err := f(&v1.Pod{ObjectMeta: pod2, Status: v1.PodStatus{PodIP: ip, Phase: v1.PodRunning}}, model.EventAdd); err != nil {
+	if err := f(&v1.Pod{ObjectMeta: pod2, Status: v1.PodStatus{PodIP: ip2, Phase: v1.PodRunning}}, model.EventAdd); err != nil {
 		t.Error(err)
 	}
 
-	if pod, exists := podCache.getPodKey(ip); !exists || pod != "default/pod2" {
+	if pod, exists := podCache.getPodKey(ip2); !exists || pod != "default/pod2" {
 		t.Errorf("getPodKey => got %s, pod2 not found or incorrect", pod)
 	}
 
-	if err := f(&v1.Pod{ObjectMeta: pod1, Status: v1.PodStatus{PodIP: ip, Phase: v1.PodFailed}}, model.EventDelete); err != nil {
+	if err := f(&v1.Pod{ObjectMeta: pod1, Status: v1.PodStatus{PodIP: ip1, Phase: v1.PodFailed}}, model.EventDelete); err != nil {
 		t.Error(err)
 	}
 
-	if pod, exists := podCache.getPodKey(ip); !exists || pod != "default/pod2" {
+	if pod, exists := podCache.getPodKey(ip2); !exists || pod != "default/pod2" {
 		t.Errorf("getPodKey => got %s, pod2 not found or incorrect", pod)
 	}
 
-	if err := f(&v1.Pod{ObjectMeta: pod2, Status: v1.PodStatus{PodIP: ip, Phase: v1.PodFailed}}, model.EventDelete); err != nil {
+	if err := f(&v1.Pod{ObjectMeta: pod2, Status: v1.PodStatus{PodIP: ip2, Phase: v1.PodFailed}}, model.EventDelete); err != nil {
 		t.Error(err)
 	}
 
-	if pod, exists := podCache.getPodKey(ip); exists {
+	if pod, exists := podCache.getPodKey(ip2); exists {
+		t.Errorf("getPodKey => got %s, want none", pod)
+	}
+
+	ip3 := "192.168.1.100"
+	pod3 := metav1.ObjectMeta{Name: "pod3", Namespace: ns}
+	if err := f(&v1.Pod{
+		ObjectMeta: pod3,
+		Spec:       v1.PodSpec{HostNetwork: true},
+		Status:     v1.PodStatus{PodIP: ip3, Phase: v1.PodRunning},
+	}, model.EventAdd); err != nil {
+		t.Error(err)
+	}
+	if pod, exists := podCache.getPodKey(ip3); exists {
 		t.Errorf("getPodKey => got %s, want none", pod)
 	}
 }

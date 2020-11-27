@@ -73,7 +73,7 @@ func (esc *endpointSliceController) onEvent(curr interface{}, event model.Event)
 		}
 	}
 
-	return processEndpointEvent(esc.c, esc, ep.Labels[discovery.LabelServiceName], ep.Namespace, event, curr)
+	return esc.c.processEndpointEvent(esc, ep.Labels[discovery.LabelServiceName], ep.Namespace, event, curr)
 }
 
 // GetProxyServiceInstances returns service instances co-located with a given proxy
@@ -165,7 +165,8 @@ func (esc *endpointSliceController) buildIstioEndpoints(es interface{}, host hos
 			continue
 		}
 		for _, a := range e.Addresses {
-			pod, expectedPod := getPod(esc.c, a, &metav1.ObjectMeta{Name: slice.Name, Namespace: slice.Namespace}, e.TargetRef, host)
+			meta := &metav1.ObjectMeta{Name: slice.Name, Namespace: slice.Namespace}
+			pod, expectedPod := getPod(esc.c, a, meta, e.TargetRef, host)
 			if pod == nil && expectedPod {
 				continue
 			}

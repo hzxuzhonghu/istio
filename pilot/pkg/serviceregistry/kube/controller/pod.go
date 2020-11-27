@@ -64,9 +64,6 @@ func newPodCache(c *Controller, informer coreinformers.PodInformer, queueEndpoin
 
 // onEvent updates the IP-based index (pc.podsByIP).
 func (pc *PodCache) onEvent(curr interface{}, ev model.Event) error {
-	pc.Lock()
-	defer pc.Unlock()
-
 	// When a pod is deleted obj could be an *v1.Pod or a DeletionFinalStateUnknown marker item.
 	pod, ok := curr.(*v1.Pod)
 	if !ok {
@@ -81,51 +78,13 @@ func (pc *PodCache) onEvent(curr interface{}, ev model.Event) error {
 	}
 
 	ip := pod.Status.PodIP
-
 	// PodIP will be empty when pod is just created, but before the IP is assigned
 	// via UpdateStatus.
 	if len(ip) > 0 {
-		key := kube.KeyFunc(pod.Name, pod.Namespace)
-		switch ev {
-		case model.EventAdd:
-			switch pod.Status.Phase {
-			case v1.PodPending, v1.PodRunning:
-				if key != pc.podsByIP[ip] {
-					// add to cache if the pod is running or pending
-					pc.update(ip, key)
-				}
-			}
-		case model.EventUpdate:
-			if pod.DeletionTimestamp != nil {
-				// delete only if this pod was in the cache
-				if pc.podsByIP[ip] == key {
-					pc.deleteIP(ip)
-				}
-				ev = model.EventDelete
-			} else {
-				switch pod.Status.Phase {
-				case v1.PodPending, v1.PodRunning:
-					if key != pc.podsByIP[ip] {
-						// add to cache if the pod is running or pending
-						pc.update(ip, key)
-					}
-
-				default:
-					// delete if the pod switched to other states and is in the cache
-					if pc.podsByIP[ip] == key {
-						pc.deleteIP(ip)
-					}
-				}
-			}
-		case model.EventDelete:
-			// delete only if this pod was in the cache
-			if pc.podsByIP[ip] == key {
-				pc.deleteIP(ip)
-			}
-		}
+		pc.updatePodCache(pod, &ev)
+		ep := NewEndpointBuilder(pc.c, pod).buildIstioEndpoint(ip, 0, "")
 		// fire instance handles for workload
 		for _, handler := range pc.c.workloadHandlers {
-			ep := NewEndpointBuilder(pc.c, pod).buildIstioEndpoint(ip, 0, "")
 			handler(&model.WorkloadInstance{
 				Name:      pod.Name,
 				Namespace: pod.Namespace,
@@ -135,6 +94,43 @@ func (pc *PodCache) onEvent(curr interface{}, ev model.Event) error {
 		}
 	}
 	return nil
+}
+
+// updatePodCache updates the cache when an event occur
+func (pc *PodCache) updatePodCache(pod *v1.Pod, event *model.Event) {
+	// ignore pod with host network set, because there may exist many pods with same ip
+	if pod.Spec.HostNetwork {
+		return
+	}
+
+	key := kube.KeyFunc(pod.Name, pod.Namespace)
+	ip := pod.Status.PodIP
+	switch *event {
+	case model.EventAdd:
+		switch pod.Status.Phase {
+		case v1.PodPending, v1.PodRunning:
+			// add to cache if the pod is running or pending
+			pc.update(ip, key)
+		}
+	case model.EventUpdate:
+		if pod.DeletionTimestamp != nil {
+			// delete only if this pod was in the cache
+			pc.deleteIP(ip)
+			// when deletionTimestamp set, it is being deleted
+			*event = model.EventDelete
+		} else {
+			switch pod.Status.Phase {
+			case v1.PodPending, v1.PodRunning:
+				// add to cache if the pod is running or pending
+				pc.update(ip, key)
+			default:
+				// delete if the pod switched to other states and is in the cache
+				pc.deleteIP(ip)
+			}
+		}
+	case model.EventDelete:
+		pc.deleteIP(ip)
+	}
 }
 
 func getPortMap(pod *v1.Pod) map[string]uint32 {
@@ -154,12 +150,15 @@ func getPortMap(pod *v1.Pod) map[string]uint32 {
 }
 
 func (pc *PodCache) deleteIP(ip string) {
+	pc.Lock()
+	defer pc.Unlock()
 	pod := pc.podsByIP[ip]
 	delete(pc.podsByIP, ip)
 	delete(pc.IPByPods, pod)
 }
 
 func (pc *PodCache) update(ip, key string) {
+	pc.Lock()
 	if current, f := pc.IPByPods[key]; f {
 		// The pod already exists, but with another IP Address. We need to clean up that
 		delete(pc.podsByIP, current)
@@ -174,6 +173,7 @@ func (pc *PodCache) update(ip, key string) {
 		}
 		endpointsPendingPodUpdate.Record(float64(len(pc.needResync)))
 	}
+	pc.Unlock()
 
 	pc.proxyUpdates(ip)
 }
