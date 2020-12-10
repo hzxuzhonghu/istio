@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package xds
+package workloadentry
 
 import (
 	"context"
@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/types"
+	"golang.org/x/time/rate"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubetypes "k8s.io/apimachinery/pkg/types"
@@ -32,6 +33,8 @@ import (
 	"istio.io/istio/pilot/pkg/networking/util"
 	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/gvk"
+	"istio.io/istio/pkg/queue"
+	istiolog "istio.io/pkg/log"
 )
 
 const (
@@ -56,8 +59,49 @@ type HealthEvent struct {
 	Message string `json:"err_message,omitempty"`
 }
 
-func (sg *InternalGen) RegisterWorkload(proxy *model.Proxy, con *Connection) error {
-	if !features.WorkloadEntryAutoRegistration {
+var log = istiolog.RegisterScope("wle", "wle controller debugging", 0)
+
+type Controller struct {
+	instanceID string
+	// TODO move WorkloadEntry related tasks into their own object and give InternalGen a reference.
+	// store should either be k8s (for running pilot) or in-memory (for tests). MCP and other config store implementations
+	// do not support writing. We only use it here for reading WorkloadEntry/WorkloadGroup.
+	store model.ConfigStoreCache
+	// cleanupLimit rate limit's autoregistered WorkloadEntry cleanup calls to k8s
+	cleanupLimit *rate.Limiter
+	// cleanupQueue delays the cleanup of autoregsitered WorkloadEntries to allow for grace period
+	cleanupQueue queue.Delayed
+}
+
+func NewController(store model.ConfigStoreCache, instanceID string) *Controller {
+	if features.WorkloadEntryAutoRegistration || features.WorkloadEntryHealthChecks {
+		return &Controller{
+			instanceID:   instanceID,
+			store:        store,
+			cleanupLimit: rate.NewLimiter(rate.Limit(20), 1),
+			cleanupQueue: queue.NewDelayed(),
+		}
+	}
+	return nil
+}
+
+func (c *Controller) Run(stop <-chan struct{}) {
+	if c == nil {
+		return
+	}
+	if c.store != nil && c.cleanupQueue != nil {
+		go c.periodicWorkloadEntryCleanup(stop)
+		go c.cleanupQueue.Run(stop)
+	}
+}
+
+func setConnectMeta(c *config.Config, controller string, conTime time.Time) {
+	c.Annotations[WorkloadControllerAnnotation] = controller
+	c.Annotations[ConnectedAtAnnotation] = conTime.Format(timeFormat)
+}
+
+func (c *Controller) RegisterWorkload(proxy *model.Proxy, conTime time.Time) error {
+	if !features.WorkloadEntryAutoRegistration || c == nil {
 		return nil
 	}
 	// check if the WE already exists, update the status
@@ -67,40 +111,40 @@ func (sg *InternalGen) RegisterWorkload(proxy *model.Proxy, con *Connection) err
 	}
 
 	// Try to patch, if it fails then try to create
-	_, err := sg.store.Patch(gvk.WorkloadEntry, entryName, proxy.Metadata.Namespace, func(cfg config.Config) config.Config {
-		setConnectMeta(&cfg, sg.Server.instanceID, con)
+	_, err := c.store.Patch(gvk.WorkloadEntry, entryName, proxy.Metadata.Namespace, func(cfg config.Config) config.Config {
+		setConnectMeta(&cfg, c.instanceID, conTime)
 		return cfg
 	})
 	// TODO return err from Patch through Get
 	if err == nil {
-		adsLog.Debugf("updated auto-registered WorkloadEntry %s/%s", proxy.Metadata.Namespace, entryName)
+		log.Debugf("updated auto-registered WorkloadEntry %s/%s", proxy.Metadata.Namespace, entryName)
 		return nil
 	} else if !errors.IsNotFound(err) && err.Error() != "item not found" {
-		adsLog.Errorf("updating auto-registered WorkloadEntry %s/%s: %v", proxy.Metadata.Namespace, entryName, err)
+		log.Errorf("updating auto-registered WorkloadEntry %s/%s: %v", proxy.Metadata.Namespace, entryName, err)
 		return fmt.Errorf("updating auto-registered WorkloadEntry %s/%s err: %v", proxy.Metadata.Namespace, entryName, err)
 	}
 
 	// No WorkloadEntry, create one using fields from the associated WorkloadGroup
-	groupCfg := sg.store.Get(gvk.WorkloadGroup, proxy.Metadata.AutoRegisterGroup, proxy.Metadata.Namespace)
+	groupCfg := c.store.Get(gvk.WorkloadGroup, proxy.Metadata.AutoRegisterGroup, proxy.Metadata.Namespace)
 	if groupCfg == nil {
-		adsLog.Errorf("auto-registration of %v failed: cannot find WorkloadGroup %s/%s",
+		log.Errorf("auto-registration of %v failed: cannot find WorkloadGroup %s/%s",
 			proxy.ID, proxy.Metadata.Namespace, proxy.Metadata.AutoRegisterGroup)
 		return fmt.Errorf("auto-registration of %v failed: cannot find WorkloadGroup %s/%s",
 			proxy.ID, proxy.Metadata.Namespace, proxy.Metadata.AutoRegisterGroup)
 	}
 	entry := workloadEntryFromGroup(entryName, proxy, groupCfg)
-	setConnectMeta(entry, sg.Server.instanceID, con)
-	_, err = sg.store.Create(*entry)
+	setConnectMeta(entry, c.instanceID, conTime)
+	_, err = c.store.Create(*entry)
 	if err != nil {
-		adsLog.Errorf("auto-registration of %v failed: error creating WorkloadEntry: %v", proxy.ID, err)
+		log.Errorf("auto-registration of %v failed: error creating WorkloadEntry: %v", proxy.ID, err)
 		return fmt.Errorf("auto-registration of %v failed: error creating WorkloadEntry: %v", proxy.ID, err)
 	}
-	adsLog.Infof("auto-registered WorkloadEntry %s/%s", proxy.Metadata.Namespace, entryName)
+	log.Infof("auto-registered WorkloadEntry %s/%s", proxy.Metadata.Namespace, entryName)
 	return nil
 }
 
-func (sg *InternalGen) QueueUnregisterWorkload(proxy *model.Proxy) {
-	if !features.WorkloadEntryAutoRegistration {
+func (c *Controller) QueueUnregisterWorkload(proxy *model.Proxy) {
+	if !features.WorkloadEntryAutoRegistration || c == nil {
 		return
 	}
 	// check if the WE already exists, update the status
@@ -110,35 +154,35 @@ func (sg *InternalGen) QueueUnregisterWorkload(proxy *model.Proxy) {
 	}
 
 	// unset controller, set disconnect time
-	cfg := sg.store.Get(gvk.WorkloadEntry, entryName, proxy.Metadata.Namespace)
+	cfg := c.store.Get(gvk.WorkloadEntry, entryName, proxy.Metadata.Namespace)
 	if cfg == nil {
 		// we failed to create the workload entry in the first place or it is not propagated
 		return
 	}
 
 	// The wle has reconnected to another istiod and controlled by it.
-	if cfg.Annotations[WorkloadControllerAnnotation] != sg.Server.instanceID {
+	if cfg.Annotations[WorkloadControllerAnnotation] != c.instanceID {
 		return
 	}
 	wle := cfg.DeepCopy()
 	delete(wle.Annotations, WorkloadControllerAnnotation)
 	wle.Annotations[DisconnectedAtAnnotation] = time.Now().Format(timeFormat)
 	// use update instead of patch to prevent race condition
-	_, err := sg.store.Update(wle)
+	_, err := c.store.Update(wle)
 	if err != nil && !errors.IsConflict(err) {
-		adsLog.Warnf("disconnect: failed updating WorkloadEntry %s/%s: %v", proxy.Metadata.Namespace, entryName, err)
+		log.Warnf("disconnect: failed updating WorkloadEntry %s/%s: %v", proxy.Metadata.Namespace, entryName, err)
 		return
 	}
 
 	// after grace period, check if the workload ever reconnected
 	ns := proxy.Metadata.Namespace
-	sg.cleanupQueue.PushDelayed(func() error {
-		wle := sg.store.Get(gvk.WorkloadEntry, entryName, ns)
+	c.cleanupQueue.PushDelayed(func() error {
+		wle := c.store.Get(gvk.WorkloadEntry, entryName, ns)
 		if wle == nil {
 			return nil
 		}
 		if shouldCleanupEntry(*wle) {
-			sg.cleanupEntry(*wle)
+			c.cleanupEntry(*wle)
 		}
 		return nil
 	}, features.WorkloadEntryCleanupGracePeriod)
@@ -146,20 +190,20 @@ func (sg *InternalGen) QueueUnregisterWorkload(proxy *model.Proxy) {
 
 // UpdateWorkloadEntryHealth updates the associated WorkloadEntries health status
 // based on the corresponding health check performed by istio-agent.
-func (sg *InternalGen) UpdateWorkloadEntryHealth(proxy *model.Proxy, event HealthEvent) {
+func (c *Controller) UpdateWorkloadEntryHealth(proxy *model.Proxy, event HealthEvent) {
 	// we assume that the workload entry exists
 	// if auto registration does not exist, try looking
 	// up in NodeMetadata
 	entryName := autoregisteredWorkloadEntryName(proxy)
 	if entryName == "" {
-		adsLog.Errorf("unable to derive WorkloadEntry for health update for %v", proxy.ID)
+		log.Errorf("unable to derive WorkloadEntry for health update for %v", proxy.ID)
 		return
 	}
 
 	// get previous status
-	cfg := sg.store.Get(gvk.WorkloadEntry, entryName, proxy.Metadata.Namespace)
+	cfg := c.store.Get(gvk.WorkloadEntry, entryName, proxy.Metadata.Namespace)
 	if cfg == nil {
-		adsLog.Errorf("config was nil when getting WorkloadEntry %v for %v", entryName, proxy.ID)
+		log.Errorf("config was nil when getting WorkloadEntry %v for %v", entryName, proxy.ID)
 		return
 	}
 	wle := cfg.DeepCopy()
@@ -175,17 +219,17 @@ func (sg *InternalGen) UpdateWorkloadEntryHealth(proxy *model.Proxy, event Healt
 		}
 	}
 	status = wle.Status.(*v1alpha1.IstioStatus)
-	status.Conditions = UpdateHealthCondition(status.Conditions, event)
+	status.Conditions = updateHealthCondition(status.Conditions, event)
 
 	// update the status
-	_, err := sg.store.UpdateStatus(wle)
+	_, err := c.store.UpdateStatus(wle)
 	if err != nil {
-		adsLog.Errorf("error while updating WorkloadEntry status: %v for %v", err, proxy.ID)
+		log.Errorf("error while updating WorkloadEntry status: %v for %v", err, proxy.ID)
 	}
 }
 
 // periodicWorkloadEntryCleanup checks lists all WorkloadEntry
-func (sg *InternalGen) periodicWorkloadEntryCleanup(stopCh <-chan struct{}) {
+func (c *Controller) periodicWorkloadEntryCleanup(stopCh <-chan struct{}) {
 	if !features.WorkloadEntryAutoRegistration {
 		return
 	}
@@ -194,16 +238,16 @@ func (sg *InternalGen) periodicWorkloadEntryCleanup(stopCh <-chan struct{}) {
 	for {
 		select {
 		case <-ticker.C:
-			wles, err := sg.store.List(gvk.WorkloadEntry, metav1.NamespaceAll)
+			wles, err := c.store.List(gvk.WorkloadEntry, metav1.NamespaceAll)
 			if err != nil {
-				adsLog.Warnf("error listing WorkloadEntry for cleanup: %v", err)
+				log.Warnf("error listing WorkloadEntry for cleanup: %v", err)
 				continue
 			}
 			for _, wle := range wles {
 				wle := wle
 				if shouldCleanupEntry(wle) {
-					sg.cleanupQueue.Push(func() error {
-						sg.cleanupEntry(wle)
+					c.cleanupQueue.Push(func() error {
+						c.cleanupEntry(wle)
 						return nil
 					})
 				}
@@ -212,16 +256,6 @@ func (sg *InternalGen) periodicWorkloadEntryCleanup(stopCh <-chan struct{}) {
 			return
 		}
 	}
-}
-
-func (sg *InternalGen) cleanupEntry(wle config.Config) {
-	if err := sg.cleanupLimit.Wait(context.TODO()); err != nil {
-		adsLog.Errorf("error in WorkloadEntry cleanup rate limiter: %v", err)
-	}
-	if err := sg.store.Delete(gvk.WorkloadEntry, wle.Name, wle.Namespace); err != nil {
-		adsLog.Warnf("failed cleaning up auto-registered WorkloadEntry %s/%s: %v", wle.Namespace, wle.Name, err)
-	}
-	adsLog.Infof("cleaned up auto-registered WorkloadEntry %s/%s", wle.Namespace, wle.Name)
 }
 
 func shouldCleanupEntry(wle config.Config) bool {
@@ -245,9 +279,89 @@ func shouldCleanupEntry(wle config.Config) bool {
 	return true
 }
 
-func setConnectMeta(c *config.Config, controller string, con *Connection) {
-	c.Annotations[WorkloadControllerAnnotation] = controller
-	c.Annotations[ConnectedAtAnnotation] = con.Connect.Format(timeFormat)
+func (c *Controller) cleanupEntry(wle config.Config) {
+	if err := c.cleanupLimit.Wait(context.TODO()); err != nil {
+		log.Errorf("error in WorkloadEntry cleanup rate limiter: %v", err)
+	}
+	if err := c.store.Delete(gvk.WorkloadEntry, wle.Name, wle.Namespace); err != nil {
+		log.Warnf("failed cleaning up auto-registered WorkloadEntry %s/%s: %v", wle.Namespace, wle.Name, err)
+	}
+	log.Infof("cleaned up auto-registered WorkloadEntry %s/%s", wle.Namespace, wle.Name)
+}
+
+func autoregisteredWorkloadEntryName(proxy *model.Proxy) string {
+	if proxy.Metadata.AutoRegisterGroup == "" {
+		return ""
+	}
+	if len(proxy.IPAddresses) == 0 {
+		log.Errorf("auto-registration of %v failed: missing IP addresses", proxy.ID)
+		return ""
+	}
+	if len(proxy.Metadata.Namespace) == 0 {
+		log.Errorf("auto-registration of %v failed: missing namespace", proxy.ID)
+		return ""
+	}
+	p := []string{proxy.Metadata.AutoRegisterGroup, proxy.IPAddresses[0]}
+	if proxy.Metadata.Network != "" {
+		p = append(p, proxy.Metadata.Network)
+	}
+
+	name := strings.Join(p, "-")
+	if len(name) > 253 {
+		name = name[len(name)-253:]
+		log.Warnf("generated WorkloadEntry name is too long, consider making the WorkloadGroup name shorter. Shortening from beginning to: %s", name)
+	}
+	return name
+}
+
+func updateHealthCondition(conditions []*v1alpha1.IstioCondition, event HealthEvent) []*v1alpha1.IstioCondition {
+	foundHealth := false
+	healthIdx := 0
+	for i, cond := range conditions {
+		if cond.Type == "Healthy" {
+			foundHealth = true
+			healthIdx = i
+			break
+		}
+	}
+	if !foundHealth {
+		// we have not inserted a healthy condition yet
+		// just append and return
+		return append(conditions, transformHealthEvent(event))
+	}
+	// we should just replace the health status
+	conditions[healthIdx] = transformHealthEvent(event)
+	return conditions
+}
+
+func transformHealthEvent(event HealthEvent) *v1alpha1.IstioCondition {
+	cond := &v1alpha1.IstioCondition{
+		Type: "Healthy",
+		// last probe and transition are the same because
+		// we only send on transition in the agent
+		LastProbeTime:      types.TimestampNow(),
+		LastTransitionTime: types.TimestampNow(),
+	}
+	if event.Healthy {
+		cond.Status = "True"
+		return cond
+	}
+	cond.Status = "False"
+	cond.Message = event.Message
+	return cond
+}
+
+func mergeLabels(labels ...map[string]string) map[string]string {
+	if len(labels) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(labels)*len(labels[0]))
+	for _, lm := range labels {
+		for k, v := range lm {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 var workloadGroupIsController = true
@@ -295,79 +409,4 @@ func workloadEntryFromGroup(name string, proxy *model.Proxy, groupCfg *config.Co
 		// TODO status fields used for garbage collection
 		Status: nil,
 	}
-}
-
-func mergeLabels(labels ...map[string]string) map[string]string {
-	if len(labels) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(labels)*len(labels[0]))
-	for _, lm := range labels {
-		for k, v := range lm {
-			out[k] = v
-		}
-	}
-	return out
-}
-
-func autoregisteredWorkloadEntryName(proxy *model.Proxy) string {
-	if proxy.Metadata.AutoRegisterGroup == "" {
-		return ""
-	}
-	if len(proxy.IPAddresses) == 0 {
-		adsLog.Errorf("auto-registration of %v failed: missing IP addresses", proxy.ID)
-		return ""
-	}
-	if len(proxy.Metadata.Namespace) == 0 {
-		adsLog.Errorf("auto-registration of %v failed: missing namespace", proxy.ID)
-		return ""
-	}
-	p := []string{proxy.Metadata.AutoRegisterGroup, proxy.IPAddresses[0]}
-	if proxy.Metadata.Network != "" {
-		p = append(p, proxy.Metadata.Network)
-	}
-
-	name := strings.Join(p, "-")
-	if len(name) > 253 {
-		name = name[len(name)-253:]
-		adsLog.Warnf("generated WorkloadEntry name is too long, consider making the WorkloadGroup name shorter. Shortening from beginning to: %s", name)
-	}
-	return name
-}
-
-func UpdateHealthCondition(conditions []*v1alpha1.IstioCondition, event HealthEvent) []*v1alpha1.IstioCondition {
-	foundHealth := false
-	healthIdx := 0
-	for i, cond := range conditions {
-		if cond.Type == "Healthy" {
-			foundHealth = true
-			healthIdx = i
-			break
-		}
-	}
-	if !foundHealth {
-		// we have not inserted a healthy condition yet
-		// just append and return
-		return append(conditions, transformHealthEvent(event))
-	}
-	// we should just replace the health status
-	conditions[healthIdx] = transformHealthEvent(event)
-	return conditions
-}
-
-func transformHealthEvent(event HealthEvent) *v1alpha1.IstioCondition {
-	cond := &v1alpha1.IstioCondition{
-		Type: "Healthy",
-		// last probe and transition are the same because
-		// we only send on transition in the agent
-		LastProbeTime:      types.TimestampNow(),
-		LastTransitionTime: types.TimestampNow(),
-	}
-	if event.Healthy {
-		cond.Status = "True"
-		return cond
-	}
-	cond.Status = "False"
-	cond.Message = event.Message
-	return cond
 }
