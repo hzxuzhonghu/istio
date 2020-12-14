@@ -22,7 +22,6 @@ import (
 
 	"github.com/gogo/protobuf/types"
 	"golang.org/x/time/rate"
-	istiolog "istio.io/pkg/log"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubetypes "k8s.io/apimachinery/pkg/types"
@@ -37,6 +36,7 @@ import (
 	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/gvk"
 	"istio.io/istio/pkg/queue"
+	istiolog "istio.io/pkg/log"
 )
 
 const (
