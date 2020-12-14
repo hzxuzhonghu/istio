@@ -102,15 +102,11 @@ func (c *controller) UpdateStatus(config config.Config) (newRevision string, err
 	return
 }
 
-func (c *controller) Patch(typ config.GroupVersionKind, name, namespace string, patchFn config.PatchFunc) (newRevision string, err error) {
-	oldconfig := c.configStore.Get(typ, name, namespace)
-	if oldconfig == nil {
-		return "", errNotFound
-	}
-	cfg := patchFn(oldconfig.DeepCopy())
+func (c *controller) Patch(orig config.Config, patchFn config.PatchFunc) (newRevision string, err error) {
+	cfg := patchFn(orig.DeepCopy())
 	if newRevision, err = c.configStore.Update(cfg); err == nil {
 		c.monitor.ScheduleProcessEvent(ConfigEvent{
-			old:    *oldconfig,
+			old:    orig,
 			config: cfg,
 			event:  model.EventUpdate,
 		})

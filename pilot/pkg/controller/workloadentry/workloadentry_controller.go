@@ -110,34 +110,35 @@ func (c *Controller) RegisterWorkload(proxy *model.Proxy, conTime time.Time) err
 		return nil
 	}
 
-	// Try to patch, if it fails then try to create
-	_, err := c.store.Patch(gvk.WorkloadEntry, entryName, proxy.Metadata.Namespace, func(cfg config.Config) config.Config {
-		setConnectMeta(&cfg, c.instanceID, conTime)
-		return cfg
-	})
-	// TODO return err from Patch through Get
-	if err == nil {
-		log.Debugf("updated auto-registered WorkloadEntry %s/%s", proxy.Metadata.Namespace, entryName)
+	wle := c.store.Get(gvk.WorkloadEntry, entryName, proxy.Metadata.Namespace)
+	if wle != nil {
+		// Try to patch, if it fails then try to create
+		_, err := c.store.Patch(*wle, func(cfg config.Config) config.Config {
+			setConnectMeta(&cfg, c.instanceID, conTime)
+			return cfg
+		})
+		if err != nil {
+			log.Errorf("failed updating WorkloadEntry %s/%s: %v", proxy.Metadata.Namespace, entryName, err)
+			return fmt.Errorf("failed updating WorkloadEntry %s/%s err: %v", proxy.Metadata.Namespace, entryName, err)
+		}
+		log.Debugf("updated WorkloadEntry %s/%s", proxy.Metadata.Namespace, entryName)
 		return nil
-	} else if !errors.IsNotFound(err) && err.Error() != "item not found" {
-		log.Errorf("updating auto-registered WorkloadEntry %s/%s: %v", proxy.Metadata.Namespace, entryName, err)
-		return fmt.Errorf("updating auto-registered WorkloadEntry %s/%s err: %v", proxy.Metadata.Namespace, entryName, err)
 	}
 
 	// No WorkloadEntry, create one using fields from the associated WorkloadGroup
 	groupCfg := c.store.Get(gvk.WorkloadGroup, proxy.Metadata.AutoRegisterGroup, proxy.Metadata.Namespace)
 	if groupCfg == nil {
-		log.Errorf("auto-registration of %v failed: cannot find WorkloadGroup %s/%s",
+		log.Errorf("auto-registration WorkloadEntry of %v failed: cannot find WorkloadGroup %s/%s",
 			proxy.ID, proxy.Metadata.Namespace, proxy.Metadata.AutoRegisterGroup)
-		return fmt.Errorf("auto-registration of %v failed: cannot find WorkloadGroup %s/%s",
+		return fmt.Errorf("auto-registration WorkloadEntry of %v failed: cannot find WorkloadGroup %s/%s",
 			proxy.ID, proxy.Metadata.Namespace, proxy.Metadata.AutoRegisterGroup)
 	}
 	entry := workloadEntryFromGroup(entryName, proxy, groupCfg)
 	setConnectMeta(entry, c.instanceID, conTime)
-	_, err = c.store.Create(*entry)
+	_, err := c.store.Create(*entry)
 	if err != nil {
-		log.Errorf("auto-registration of %v failed: error creating WorkloadEntry: %v", proxy.ID, err)
-		return fmt.Errorf("auto-registration of %v failed: error creating WorkloadEntry: %v", proxy.ID, err)
+		log.Errorf("auto-registration WorkloadEntry of %v failed: error creating WorkloadEntry: %v", proxy.ID, err)
+		return fmt.Errorf("auto-registration WorkloadEntry of %v failed: error creating WorkloadEntry: %v", proxy.ID, err)
 	}
 	log.Infof("auto-registered WorkloadEntry %s/%s", proxy.Metadata.Namespace, entryName)
 	return nil

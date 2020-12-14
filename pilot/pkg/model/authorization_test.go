@@ -420,6 +420,6 @@ func (fs *authzFakeStore) UpdateStatus(config.Config) (string, error) {
 	return "not implemented", nil
 }
 
-func (fs *authzFakeStore) Patch(typ config.GroupVersionKind, name, namespace string, patchFn config.PatchFunc) (string, error) {
+func (fs *authzFakeStore) Patch(orig config.Config, patchFn config.PatchFunc) (string, error) {
 	return "not implemented", nil
 }

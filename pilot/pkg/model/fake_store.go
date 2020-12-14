@@ -68,7 +68,7 @@ func (*FakeStore) Update(config config.Config) (newRevision string, err error) {
 
 func (*FakeStore) UpdateStatus(config config.Config) (string, error) { return "", nil }
 
-func (*FakeStore) Patch(typ config.GroupVersionKind, name, namespace string, patchFn config.PatchFunc) (string, error) {
+func (*FakeStore) Patch(orig config.Config, patchFn config.PatchFunc) (string, error) {
 	return "", nil
 }
 
