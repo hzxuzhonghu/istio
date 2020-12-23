@@ -275,7 +275,6 @@ func TestXdsProxyReconnects(t *testing.T) {
 		conn := setupDownstreamConnection(t)
 		downstream := stream(t, conn)
 		sendDownstream(t, downstream)
-		conn.Close()
 		conn = setupDownstreamConnection(t)
 		downstream = stream(t, conn)
 		sendDownstream(t, downstream)
