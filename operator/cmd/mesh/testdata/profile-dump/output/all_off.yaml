@@ -226,7 +226,6 @@ spec:
             cpu: 100m
             memory: 128Mi
         statusPort: 15020
-        tracer: zipkin
       proxy_init:
         image: proxyv2
         resources:

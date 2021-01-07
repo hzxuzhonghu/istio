@@ -73,7 +73,6 @@ spec:
         excludeOutboundPorts: ""
         excludeInboundPorts: ""
         autoInject: enabled
-        tracer: "zipkin"
       proxy_init:
         image: proxyv2
         resources:
