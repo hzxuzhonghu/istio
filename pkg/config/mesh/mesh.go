@@ -48,13 +48,6 @@ func DefaultProxyConfig() meshconfig.ProxyConfig {
 		Concurrency:              &types.Int32Value{Value: 2},
 		ControlPlaneAuthPolicy:   meshconfig.AuthenticationPolicy_MUTUAL_TLS,
 		DiscoveryAddress:         "istiod.istio-system.svc:15012",
-		Tracing: &meshconfig.Tracing{
-			Tracer: &meshconfig.Tracing_Zipkin_{
-				Zipkin: &meshconfig.Tracing_Zipkin{
-					Address: "zipkin.istio-system:9411",
-				},
-			},
-		},
 
 		// Code defaults
 		BinaryPath:     constants.BinaryPathFilename,
