@@ -186,7 +186,6 @@ spec:
         excludeOutboundPorts: ""
         excludeInboundPorts: ""
         autoInject: enabled
-        tracer: ""
       proxy_init:
         image: proxyv2
         resources:
