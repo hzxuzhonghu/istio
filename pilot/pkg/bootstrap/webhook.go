@@ -46,7 +46,13 @@ func (s *Server) initSecureWebhookServer(args *PilotArgs) {
 		Handler: s.httpsMux,
 		TLSConfig: &tls.Config{
 			GetCertificate: s.getIstiodCertificate,
-		},
+			MinVersion:     tls.VersionTLS12,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			}},
 	}
 
 	// setup our readiness handler and the corresponding client we'll use later to check it with.

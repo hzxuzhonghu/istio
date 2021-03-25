@@ -38,8 +38,6 @@ var SupportedCiphers = []string{
 	"ECDHE-RSA-AES256-GCM-SHA384",
 	"ECDHE-ECDSA-AES128-GCM-SHA256",
 	"ECDHE-RSA-AES128-GCM-SHA256",
-	"AES256-GCM-SHA384",
-	"AES128-GCM-SHA256",
 }
 
 // BuildInboundFilterChain returns the filter chain(s) corresponding to the mTLS mode.
