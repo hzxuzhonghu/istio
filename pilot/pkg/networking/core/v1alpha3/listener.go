@@ -970,6 +970,8 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundListenerForPortOrUDS(l
 			listenerOpts.filterChainOpts = opts
 
 		case istionetworking.ListenerProtocolTCP:
+			log.Infof("------buildSidecarOutboundTCPListenerOptsForPortOrUDS svc %s, port %d", listenerOpts.service.Hostname,
+				listenerOpts.port.Port)
 			if ret, opts = configgen.buildSidecarOutboundTCPListenerOptsForPortOrUDS(&destinationCIDR, &listenerMapKey, &currentListenerEntry,
 				&listenerOpts, listenerMap, virtualServices, actualWildcard); !ret {
 				return
