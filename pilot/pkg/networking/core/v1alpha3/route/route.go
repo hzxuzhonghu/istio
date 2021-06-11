@@ -26,7 +26,7 @@ import (
 	xdshttpfault "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/fault/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	xdstype "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	wellknown "github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/ptypes/any"
 	"github.com/golang/protobuf/ptypes/duration"
 	"github.com/golang/protobuf/ptypes/wrappers"
@@ -84,7 +84,7 @@ type VirtualHostWrapper struct {
 // the given set of virtual services and a list of services from the
 // service registry. Services are indexed by FQDN hostnames.
 // The list of services is also passed to allow maintaining consistent ordering.
-func BuildSidecarVirtualHostsFromConfigAndRegistry(node *model.Proxy, push *model.PushContext, serviceRegistry map[host.Name]*model.Service,
+func BuildSidecarVirtualHostsFromConfigAndRegistry(node *model.Proxy, push *model.PushContext, serviceRegistry map[host.Name][]*model.Service,
 	virtualServices []config.Config, listenPort int) []VirtualHostWrapper {
 	out := make([]VirtualHostWrapper, 0)
 
@@ -111,24 +111,43 @@ func BuildSidecarVirtualHostsFromConfigAndRegistry(node *model.Proxy, push *mode
 
 	// append default hosts for the service missing virtual services
 	for hn := range missing {
-		svc := serviceRegistry[hn]
-		for _, port := range svc.Ports {
-			if port.Protocol.IsHTTP() || util.IsProtocolSniffingEnabledForPort(port) {
-				cluster := model.BuildSubsetKey(model.TrafficDirectionOutbound, "", svc.Hostname, port.Port)
-				traceOperation := traceOperation(string(svc.Hostname), port.Port)
-				httpRoute := BuildDefaultHTTPOutboundRoute(node, cluster, traceOperation)
+		svcs := serviceRegistry[hn]
+		if listenPort != 0 {
+			cluster := model.BuildSubsetKey(model.TrafficDirectionOutbound, "", hn, listenPort)
+			traceOperation := traceOperation(string(hn), listenPort)
+			httpRoute := BuildDefaultHTTPOutboundRoute(node, cluster, traceOperation)
 
-				// if this host has no virtualservice, the consistentHash on its destinationRule will be useless
-				if hashPolicy := getHashPolicyByService(node, push, svc, port); hashPolicy != nil {
-					httpRoute.GetRoute().HashPolicy = []*route.RouteAction_HashPolicy{hashPolicy}
+			// if this host has no virtualservice, the consistentHash on its destinationRule will be useless
+			if hashPolicy := getHashPolicyByService(node, push, svcs[0], listenPort); hashPolicy != nil {
+				httpRoute.GetRoute().HashPolicy = []*route.RouteAction_HashPolicy{hashPolicy}
+			}
+			out = append(out, VirtualHostWrapper{
+				Port:     listenPort,
+				Services: svcs,
+				Routes:   []*route.Route{httpRoute},
+			})
+		} else {
+			for _, svc := range svcs {
+				for _, port := range svc.Ports {
+					if port.Protocol.IsHTTP() || util.IsProtocolSniffingEnabledForPort(port) {
+						cluster := model.BuildSubsetKey(model.TrafficDirectionOutbound, "", svc.Hostname, port.Port)
+						traceOperation := traceOperation(string(svc.Hostname), port.Port)
+						httpRoute := BuildDefaultHTTPOutboundRoute(node, cluster, traceOperation)
+
+						// if this host has no virtualservice, the consistentHash on its destinationRule will be useless
+						if hashPolicy := getHashPolicyByService(node, push, svc, port.Port); hashPolicy != nil {
+							httpRoute.GetRoute().HashPolicy = []*route.RouteAction_HashPolicy{hashPolicy}
+						}
+						out = append(out, VirtualHostWrapper{
+							Port:     port.Port,
+							Services: []*model.Service{svc},
+							Routes:   []*route.Route{httpRoute},
+						})
+					}
 				}
-				out = append(out, VirtualHostWrapper{
-					Port:     port.Port,
-					Services: []*model.Service{svc},
-					Routes:   []*route.Route{httpRoute},
-				})
 			}
 		}
+
 	}
 
 	return out
@@ -136,20 +155,19 @@ func BuildSidecarVirtualHostsFromConfigAndRegistry(node *model.Proxy, push *mode
 
 // separateVSHostsAndServices splits the virtual service hosts into services (if they are found in the registry) and
 // plain non-registry hostnames
-func separateVSHostsAndServices(virtualService config.Config,
-	serviceRegistry map[host.Name]*model.Service) ([]string, []*model.Service) {
-	rule := virtualService.Spec.(*networking.VirtualService)
+func separateVSHostsAndServices(virtualService *networking.VirtualService,
+	serviceRegistry map[host.Name][]*model.Service) ([]string, []*model.Service) {
 	hosts := make([]string, 0)
 	servicesInVirtualService := make([]*model.Service, 0)
 	wchosts := make([]host.Name, 0)
 
 	// As a performance optimization, process non wildcard hosts first, so that they can be
 	// looked up directly in the service registry map.
-	for _, hostname := range rule.Hosts {
+	for _, hostname := range virtualService.Hosts {
 		vshost := host.Name(hostname)
 		if !vshost.IsWildCarded() {
 			if svc, exists := serviceRegistry[vshost]; exists {
-				servicesInVirtualService = append(servicesInVirtualService, svc)
+				servicesInVirtualService = append(servicesInVirtualService, svc...)
 			} else {
 				hosts = append(hosts, hostname)
 			}
@@ -167,7 +185,7 @@ func separateVSHostsAndServices(virtualService config.Config,
 		for svcHost, svc := range serviceRegistry {
 			// *.foo.global matches *.global
 			if svcHost.Matches(hostname) {
-				servicesInVirtualService = append(servicesInVirtualService, svc)
+				servicesInVirtualService = append(servicesInVirtualService, svc...)
 				foundSvcMatch = true
 			}
 		}
@@ -185,9 +203,10 @@ func buildSidecarVirtualHostsForVirtualService(
 	node *model.Proxy,
 	push *model.PushContext,
 	virtualService config.Config,
-	serviceRegistry map[host.Name]*model.Service,
+	serviceRegistry map[host.Name][]*model.Service,
 	listenPort int) []VirtualHostWrapper {
-	hosts, servicesInVirtualService := separateVSHostsAndServices(virtualService, serviceRegistry)
+	rule := virtualService.Spec.(*networking.VirtualService)
+	hosts, servicesInVirtualService := separateVSHostsAndServices(rule, serviceRegistry)
 
 	// Now group these services by port so that we can infer the destination.port if the user
 	// doesn't specify any port for a multiport service. We need to know the destination port in
@@ -261,14 +280,10 @@ func BuildHTTPRoutesForVirtualService(
 	node *model.Proxy,
 	push *model.PushContext,
 	virtualService config.Config,
-	serviceRegistry map[host.Name]*model.Service,
+	serviceRegistry map[host.Name][]*model.Service,
 	listenPort int,
 	gatewayNames map[string]bool) ([]*route.Route, error) {
-	vs, ok := virtualService.Spec.(*networking.VirtualService)
-	if !ok { // should never happen
-		return nil, fmt.Errorf("in not a virtual service: %#v", virtualService)
-	}
-
+	vs := virtualService.Spec.(*networking.VirtualService)
 	out := make([]*route.Route, 0, len(vs.Http))
 
 	catchall := false
@@ -327,7 +342,7 @@ func sourceMatchHTTP(match *networking.HTTPMatchRequest, proxyLabels labels.Coll
 func translateRoute(push *model.PushContext, node *model.Proxy, in *networking.HTTPRoute,
 	match *networking.HTTPMatchRequest, port int,
 	virtualService config.Config,
-	serviceRegistry map[host.Name]*model.Service,
+	serviceRegistry map[host.Name][]*model.Service,
 	gatewayNames map[string]bool) *route.Route {
 	// When building routes, its okay if the target cluster cannot be
 	// resolved Traffic to such clusters will blackhole.
@@ -423,8 +438,12 @@ func translateRoute(push *model.PushContext, node *model.Proxy, in *networking.H
 
 		if in.Mirror != nil {
 			if mp := mirrorPercent(in); mp != nil {
+				var svc *model.Service
+				if len(serviceRegistry[host.Name(in.Mirror.Host)]) > 0 {
+					svc = serviceRegistry[host.Name(in.Mirror.Host)][0]
+				}
 				action.RequestMirrorPolicies = []*route.RouteAction_RequestMirrorPolicy{{
-					Cluster:         GetDestinationCluster(in.Mirror, serviceRegistry[host.Name(in.Mirror.Host)], port),
+					Cluster:         GetDestinationCluster(in.Mirror, svc, port),
 					RuntimeFraction: mp,
 					TraceSampled:    &wrappers.BoolValue{Value: false},
 				}}
@@ -445,7 +464,11 @@ func translateRoute(push *model.PushContext, node *model.Proxy, in *networking.H
 				}
 			}
 			hostname := host.Name(dst.GetDestination().GetHost())
-			n := GetDestinationCluster(dst.Destination, serviceRegistry[hostname], port)
+			var svc *model.Service
+			if len(serviceRegistry[hostname]) > 0 {
+				svc = serviceRegistry[hostname][0]
+			}
+			n := GetDestinationCluster(dst.Destination, svc, port)
 			clusterWeight := &route.WeightedCluster_ClusterWeight{
 				Name:   n,
 				Weight: weight,
@@ -462,7 +485,7 @@ func translateRoute(push *model.PushContext, node *model.Proxy, in *networking.H
 
 			var configNamespace string
 			if serviceRegistry[hostname] != nil {
-				configNamespace = serviceRegistry[hostname].Attributes.Namespace
+				configNamespace = svc.Attributes.Namespace
 			}
 			hashPolicy := getHashPolicy(push, node, dst, configNamespace)
 			if hashPolicy != nil {
@@ -1073,7 +1096,7 @@ func consistentHashToHashPolicy(consistentHash *networking.LoadBalancerSettings_
 	return nil
 }
 
-func getHashPolicyByService(node *model.Proxy, push *model.PushContext, svc *model.Service, port *model.Port) *route.RouteAction_HashPolicy {
+func getHashPolicyByService(node *model.Proxy, push *model.PushContext, svc *model.Service, port int) *route.RouteAction_HashPolicy {
 	if push == nil {
 		return nil
 	}
@@ -1086,7 +1109,7 @@ func getHashPolicyByService(node *model.Proxy, push *model.PushContext, svc *mod
 	portLevelSettings := rule.GetTrafficPolicy().GetPortLevelSettings()
 	for _, setting := range portLevelSettings {
 		number := setting.GetPort().GetNumber()
-		if int(number) == port.Port {
+		if int(number) == port {
 			consistentHash = setting.GetLoadBalancer().GetConsistentHash()
 			break
 		}

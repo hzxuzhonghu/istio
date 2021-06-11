@@ -208,14 +208,15 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundVirtualHosts(node *mod
 		listenerPort = 0
 	}
 
-	nameToServiceMap := make(map[host.Name]*model.Service)
+	nameToServiceMap := make(map[host.Name][]*model.Service)
 	for _, svc := range services {
 		if listenerPort == 0 {
 			// Take all ports when listen port is 0 (http_proxy or uds)
 			// Expect virtualServices to resolve to right port
-			nameToServiceMap[svc.Hostname] = svc
+			nameToServiceMap[svc.Hostname] = []*model.Service{svc}
 		} else if svcPort, exists := svc.Ports.GetByPort(listenerPort); exists {
-			nameToServiceMap[svc.Hostname] = &model.Service{
+			// TODO: can we append the original service directly?
+			nameToServiceMap[svc.Hostname] = append(nameToServiceMap[svc.Hostname], &model.Service{
 				Hostname:     svc.Hostname,
 				Address:      svc.GetServiceAddressForProxy(node),
 				MeshExternal: svc.MeshExternal,
@@ -224,7 +225,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundVirtualHosts(node *mod
 				Attributes: model.ServiceAttributes{
 					ServiceRegistry: svc.Attributes.ServiceRegistry,
 				},
-			}
+			})
 		}
 	}
 
