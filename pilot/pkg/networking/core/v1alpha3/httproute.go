@@ -280,7 +280,21 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundVirtualHosts(node *mod
 		for _, svc := range virtualHostWrapper.Services {
 			name := domainName(string(svc.Hostname), virtualHostWrapper.Port)
 			duplicate := duplicateVirtualHost(name, vhosts)
-			if !duplicate {
+			if duplicate {
+				// This can happen for a service entry with multiple addresses
+				// or even multiple service entries with same hostname and port
+				var existingVHost *route.VirtualHost
+				for _, vHost := range virtualHosts {
+					if vHost.Name == name {
+						existingVHost = vHost
+						break
+					}
+				}
+				domains, altHosts := generateVirtualHostDomains(svc, virtualHostWrapper.Port, node)
+				domains = dedupeDomains(domains, vhdomains, altHosts, knownFQDN)
+				// merge domains to existing ones
+				existingVHost.Domains = append(existingVHost.Domains, domains...)
+			} else {
 				domains, altHosts := generateVirtualHostDomains(svc, virtualHostWrapper.Port, node)
 				dl := len(domains)
 				domains = dedupeDomains(domains, vhdomains, altHosts, knownFQDN)
@@ -302,7 +316,6 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundVirtualHosts(node *mod
 				push.AddMetric(model.DuplicatedDomains, name, node.ID, fmt.Sprintf("duplicate domain from service: %s", name))
 			}
 		}
-
 		vHostPortMap[virtualHostWrapper.Port] = append(vHostPortMap[virtualHostWrapper.Port], virtualHosts...)
 	}
 
