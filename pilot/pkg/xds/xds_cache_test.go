@@ -217,3 +217,48 @@ func TestXdsCache(t *testing.T) {
 		}
 	})
 }
+
+func TestXdsCacheStale(t *testing.T) {
+	ep1 := EndpointBuilder{
+		clusterName: "outbound|1||foo.com",
+		service:     &model.Service{Hostname: "foo.com"},
+	}
+	addWithToken := func(c model.XdsCache, entry model.XdsCacheEntry, value *discovery.Resource) {
+		_, tok, _ := c.Get(entry)
+		c.Add(entry, tok, value)
+	}
+	t.Run("simple", func(t *testing.T) {
+		c := model.NewLenientXdsCache()
+
+		// 1.  v1 event happen
+
+		// 1.1 push for proxy1 for v1
+		addWithToken(c, ep1, any1)
+		if got, _, _ := c.Get(ep1); got != any1 {
+			t.Fatalf("unexpected result: %v, want %v", got, any1)
+		}
+
+		// 2. v2 event happen, this cache data should be updated to any2
+
+		// 2.1 clear cache
+		c.ClearAll()
+
+		// 1.2
+		// dual to latency for some reason, the cache is updated to stale data
+		// push for proxy2 for v1
+		addWithToken(c, ep1, any1)
+
+		// 2.2 push for proxy2 for v2
+		// should get no data from cache dual to clear cache at the beginning of v2 event, but push for v1 is not finished yet.
+		// but got unexpected stale data
+		if got, _, _ := c.Get(ep1); got == any1 {
+			t.Fatalf("got stale data")
+		}
+
+		// 2.2 push for proxy1 for v2
+		// got unexpected stale data
+		// if got, _, _ := c.Get(ep1); got == any1 {
+		// 	t.Fatalf("got stale data")
+		// }
+	})
+}
