@@ -91,6 +91,7 @@ func BuildSidecarVirtualHostsFromConfigAndRegistry(node *model.Proxy, push *mode
 	// translate all virtual service configs into virtual hosts
 	for _, virtualService := range virtualServices {
 		wrappers := buildSidecarVirtualHostsForVirtualService(node, push, virtualService, serviceRegistry, listenPort)
+		log.Infof("Vhost wrapper for %v is %v", virtualService.Name, wrappers)
 		if len(wrappers) == 0 {
 			// If none of the routes matched by source (i.e. proxyLabels), then discard this entire virtual service
 			continue
@@ -295,6 +296,7 @@ func BuildHTTPRoutesForVirtualService(
 			break
 		}
 	}
+	log.Infof(" htp route for vs %v is %v ", virtualService.Name, out)
 
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no routes matched")
