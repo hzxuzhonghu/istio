@@ -16,7 +16,6 @@ package xds
 
 import (
 	"istio.io/istio/pilot/pkg/model"
-	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/gvk"
 )
 
@@ -27,19 +26,19 @@ type CdsGenerator struct {
 var _ model.XdsResourceGenerator = &CdsGenerator{}
 
 // Map of all configs that do not impact CDS
-var skippedCdsConfigs = map[config.GroupVersionKind]struct{}{
-	gvk.Gateway:               {},
-	gvk.WorkloadEntry:         {},
-	gvk.WorkloadGroup:         {},
-	gvk.AuthorizationPolicy:   {},
-	gvk.RequestAuthentication: {},
-	gvk.Secret:                {},
+var skippedCdsConfigs = map[string]struct{}{
+	gvk.Gateway.Kind:               {},
+	gvk.WorkloadEntry.Kind:         {},
+	gvk.WorkloadGroup.Kind:         {},
+	gvk.AuthorizationPolicy.Kind:   {},
+	gvk.RequestAuthentication.Kind: {},
+	gvk.Secret.Kind:                {},
 }
 
 // Map all configs that impacts CDS for gateways.
-var pushCdsGatewayConfig = map[config.GroupVersionKind]struct{}{
-	gvk.VirtualService: {},
-	gvk.Gateway:        {},
+var pushCdsGatewayConfig = map[string]struct{}{
+	gvk.VirtualService.Kind: {},
+	gvk.Gateway.Kind:        {},
 }
 
 func cdsNeedsPush(req *model.PushRequest, proxy *model.Proxy) bool {

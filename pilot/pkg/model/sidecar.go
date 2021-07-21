@@ -35,19 +35,19 @@ const (
 )
 
 var (
-	sidecarScopeKnownConfigTypes = map[config.GroupVersionKind]struct{}{
-		gvk.ServiceEntry:    {},
-		gvk.VirtualService:  {},
-		gvk.DestinationRule: {},
-		gvk.Sidecar:         {},
+	sidecarScopeKnownConfigTypes = map[string]struct{}{
+		gvk.ServiceEntry.Kind:    {},
+		gvk.VirtualService.Kind:  {},
+		gvk.DestinationRule.Kind: {},
+		gvk.Sidecar.Kind:         {},
 	}
 
 	// clusterScopedConfigTypes includes configs when they are in root namespace,
 	// they will be applied to all namespaces within the cluster.
-	clusterScopedConfigTypes = map[config.GroupVersionKind]struct{}{
-		gvk.EnvoyFilter:           {},
-		gvk.AuthorizationPolicy:   {},
-		gvk.RequestAuthentication: {},
+	clusterScopedConfigTypes = map[string]struct{}{
+		gvk.EnvoyFilter.Kind:           {},
+		gvk.AuthorizationPolicy.Kind:   {},
+		gvk.RequestAuthentication.Kind: {},
 	}
 )
 
@@ -214,7 +214,7 @@ func DefaultSidecarScopeForNamespace(ps *PushContext, configNamespace string) *S
 			out.destinationRules[s.Hostname] = dr
 		}
 		out.AddConfigDependencies(ConfigKey{
-			Kind:      gvk.ServiceEntry,
+			Kind:      gvk.ServiceEntry.Kind,
 			Name:      string(s.Hostname),
 			Namespace: s.Attributes.Namespace,
 		})
@@ -222,7 +222,7 @@ func DefaultSidecarScopeForNamespace(ps *PushContext, configNamespace string) *S
 
 	for _, dr := range out.destinationRules {
 		out.AddConfigDependencies(ConfigKey{
-			Kind:      gvk.DestinationRule,
+			Kind:      gvk.DestinationRule.Kind,
 			Name:      dr.Name,
 			Namespace: dr.Namespace,
 		})
@@ -236,7 +236,7 @@ func DefaultSidecarScopeForNamespace(ps *PushContext, configNamespace string) *S
 		}
 		for _, vs := range el.virtualServices {
 			out.AddConfigDependencies(ConfigKey{
-				Kind:      gvk.VirtualService,
+				Kind:      gvk.VirtualService.Kind,
 				Name:      vs.Name,
 				Namespace: vs.Namespace,
 			})
@@ -269,7 +269,7 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 	}
 
 	out.AddConfigDependencies(ConfigKey{
-		Kind:      gvk.Sidecar,
+		Kind:      gvk.Sidecar.Kind,
 		Name:      sidecarConfig.Name,
 		Namespace: sidecarConfig.Namespace,
 	})
@@ -300,7 +300,7 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 		if foundSvc, found := servicesAdded[s.Hostname]; !found {
 			servicesAdded[s.Hostname] = s
 			out.AddConfigDependencies(ConfigKey{
-				Kind:      gvk.ServiceEntry,
+				Kind:      gvk.ServiceEntry.Kind,
 				Name:      string(s.Hostname),
 				Namespace: s.Attributes.Namespace,
 			})
@@ -343,7 +343,7 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 		for _, vs := range listener.virtualServices {
 			v := vs.Spec.(*networking.VirtualService)
 			out.AddConfigDependencies(ConfigKey{
-				Kind:      gvk.VirtualService,
+				Kind:      gvk.VirtualService.Kind,
 				Name:      vs.Name,
 				Namespace: vs.Namespace,
 			})
@@ -409,7 +409,7 @@ func ConvertToSidecarScope(ps *PushContext, sidecarConfig *config.Config, config
 		if dr != nil {
 			out.destinationRules[s.Hostname] = dr
 			out.AddConfigDependencies(ConfigKey{
-				Kind:      gvk.DestinationRule,
+				Kind:      gvk.DestinationRule.Kind,
 				Name:      dr.Name,
 				Namespace: dr.Namespace,
 			})

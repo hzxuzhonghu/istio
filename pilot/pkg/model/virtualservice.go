@@ -142,7 +142,7 @@ func mergeVirtualServicesIfNeeded(
 
 	// 2. merge delegates and root
 	for _, root := range rootVses {
-		rootConfigKey := ConfigKey{Kind: gvk.VirtualService, Name: root.Name, Namespace: root.Namespace}
+		rootConfigKey := ConfigKey{Kind: gvk.VirtualService.Kind, Name: root.Name, Namespace: root.Namespace}
 		rootVs := root.Spec.(*networking.VirtualService)
 		mergedRoutes := []*networking.HTTPRoute{}
 		for _, route := range rootVs.Http {
@@ -152,7 +152,7 @@ func mergeVirtualServicesIfNeeded(
 				if delegateNamespace == "" {
 					delegateNamespace = root.Namespace
 				}
-				delegateConfigKey := ConfigKey{Kind: gvk.VirtualService, Name: delegate.Name, Namespace: delegateNamespace}
+				delegateConfigKey := ConfigKey{Kind: gvk.VirtualService.Kind, Name: delegate.Name, Namespace: delegateNamespace}
 				delegatesByRoot[rootConfigKey] = append(delegatesByRoot[rootConfigKey], delegateConfigKey)
 				delegateVS, ok := delegatesMap[key(delegate.Name, delegateNamespace)]
 				if !ok {

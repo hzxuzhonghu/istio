@@ -91,12 +91,12 @@ func indexConfig(configIndex map[ConfigKey]sets.Set, k string, entry XdsCacheEnt
 	}
 }
 
-func indexType(typeIndex map[config.GroupVersionKind]sets.Set, k string, entry XdsCacheEntry) {
-	for _, t := range entry.DependentTypes() {
-		if typeIndex[t] == nil {
-			typeIndex[t] = sets.NewSet()
+func indexType(typeIndex map[string]sets.Set, k string, entry XdsCacheEntry) {
+	for _, gvk := range entry.DependentTypes() {
+		if typeIndex[gvk.Kind] == nil {
+			typeIndex[gvk.Kind] = sets.NewSet()
 		}
-		typeIndex[t].Insert(k)
+		typeIndex[gvk.Kind].Insert(k)
 	}
 }
 
@@ -155,7 +155,7 @@ func NewXdsCache() XdsCache {
 		enableAssertions: features.EnableUnsafeAssertions,
 		store:            newLru(),
 		configIndex:      map[ConfigKey]sets.Set{},
-		typesIndex:       map[config.GroupVersionKind]sets.Set{},
+		typesIndex:       map[string]sets.Set{},
 		nextToken:        atomic.NewUint64(0),
 	}
 }
@@ -166,7 +166,7 @@ func NewLenientXdsCache() XdsCache {
 		enableAssertions: false,
 		store:            newLru(),
 		configIndex:      map[ConfigKey]sets.Set{},
-		typesIndex:       map[config.GroupVersionKind]sets.Set{},
+		typesIndex:       map[string]sets.Set{},
 		nextToken:        atomic.NewUint64(0),
 	}
 }
@@ -179,7 +179,8 @@ type lruCache struct {
 	nextToken   *atomic.Uint64
 	mu          sync.RWMutex
 	configIndex map[ConfigKey]sets.Set
-	typesIndex  map[config.GroupVersionKind]sets.Set
+	// key is resource kind
+	typesIndex map[string]sets.Set
 }
 
 var _ XdsCache = &lruCache{}
@@ -314,7 +315,7 @@ func (l *lruCache) ClearAll() {
 	defer l.mu.Unlock()
 	l.store.Purge()
 	l.configIndex = map[ConfigKey]sets.Set{}
-	l.typesIndex = map[config.GroupVersionKind]sets.Set{}
+	l.typesIndex = map[string]sets.Set{}
 	size(l.store.Len())
 }
 

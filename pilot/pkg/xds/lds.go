@@ -19,7 +19,6 @@ import (
 
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/util"
-	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/gvk"
 )
 
@@ -30,10 +29,10 @@ type LdsGenerator struct {
 var _ model.XdsResourceGenerator = &LdsGenerator{}
 
 // Map of all configs that do not impact LDS
-var skippedLdsConfigs = map[config.GroupVersionKind]struct{}{
-	gvk.DestinationRule: {},
-	gvk.WorkloadGroup:   {},
-	gvk.Secret:          {},
+var skippedLdsConfigs = map[string]struct{}{
+	gvk.DestinationRule.Kind: {},
+	gvk.WorkloadGroup.Kind:   {},
+	gvk.Secret.Kind:          {},
 }
 
 func ldsNeedsPush(req *model.PushRequest) bool {

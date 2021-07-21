@@ -19,7 +19,6 @@ import (
 
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/util"
-	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/gvk"
 )
 
@@ -35,16 +34,16 @@ type NdsGenerator struct {
 var _ model.XdsResourceGenerator = &NdsGenerator{}
 
 // Map of all configs that do not impact NDS
-var skippedNdsConfigs = map[config.GroupVersionKind]struct{}{
-	gvk.Gateway:               {},
-	gvk.VirtualService:        {},
-	gvk.DestinationRule:       {},
-	gvk.EnvoyFilter:           {},
-	gvk.WorkloadEntry:         {},
-	gvk.WorkloadGroup:         {},
-	gvk.AuthorizationPolicy:   {},
-	gvk.RequestAuthentication: {},
-	gvk.PeerAuthentication:    {},
+var skippedNdsConfigs = map[string]struct{}{
+	gvk.Gateway.Kind:               {},
+	gvk.VirtualService.Kind:        {},
+	gvk.DestinationRule.Kind:       {},
+	gvk.EnvoyFilter.Kind:           {},
+	gvk.WorkloadEntry.Kind:         {},
+	gvk.WorkloadGroup.Kind:         {},
+	gvk.AuthorizationPolicy.Kind:   {},
+	gvk.RequestAuthentication.Kind: {},
+	gvk.PeerAuthentication.Kind:    {},
 }
 
 func ndsNeedsPush(req *model.PushRequest) bool {

@@ -521,7 +521,7 @@ func (s *Server) initSDSServer(args *PilotArgs) {
 						Full: false,
 						ConfigsUpdated: map[model.ConfigKey]struct{}{
 							{
-								Kind:      gvk.Secret,
+								Kind:      gvk.Secret.Kind,
 								Name:      name,
 								Namespace: namespace,
 							}: {},
@@ -861,7 +861,7 @@ func (s *Server) initRegistryEventHandlers() {
 		pushReq := &model.PushRequest{
 			Full: true,
 			ConfigsUpdated: map[model.ConfigKey]struct{}{{
-				Kind:      gvk.ServiceEntry,
+				Kind:      gvk.ServiceEntry.Kind,
 				Name:      string(svc.Hostname),
 				Namespace: svc.Attributes.Namespace,
 			}: {}},
@@ -876,7 +876,7 @@ func (s *Server) initRegistryEventHandlers() {
 			pushReq := &model.PushRequest{
 				Full: true,
 				ConfigsUpdated: map[model.ConfigKey]struct{}{{
-					Kind:      curr.GroupVersionKind,
+					Kind:      curr.GroupVersionKind.Kind,
 					Name:      curr.Name,
 					Namespace: curr.Namespace,
 				}: {}},

@@ -22,6 +22,7 @@ import (
 	"github.com/golang/protobuf/ptypes/any"
 
 	networkingapi "istio.io/api/networking/v1alpha3"
+
 	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pilot/pkg/model"
 	networking "istio.io/istio/pilot/pkg/networking/core/v1alpha3"
@@ -29,7 +30,6 @@ import (
 	"istio.io/istio/pilot/pkg/networking/util"
 	"istio.io/istio/pilot/pkg/util/sets"
 	v3 "istio.io/istio/pilot/pkg/xds/v3"
-	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/labels"
 	"istio.io/istio/pkg/config/protocol"
 	"istio.io/istio/pkg/config/schema/gvk"
@@ -99,7 +99,7 @@ func (s *DiscoveryServer) EDSUpdate(clusterID, serviceName string, namespace str
 	s.ConfigUpdate(&model.PushRequest{
 		Full: fp,
 		ConfigsUpdated: map[model.ConfigKey]struct{}{{
-			Kind:      gvk.ServiceEntry,
+			Kind:      gvk.ServiceEntry.Kind,
 			Name:      serviceName,
 			Namespace: namespace,
 		}: {}},
@@ -157,7 +157,7 @@ func (s *DiscoveryServer) edsCacheUpdate(shard string, hostname string, namespac
 	// immediately. However, clearing the cache here has almost no impact on cache performance as we
 	// would clear it shortly after anyways.
 	s.Cache.Clear(map[model.ConfigKey]struct{}{{
-		Kind:      gvk.ServiceEntry,
+		Kind:      gvk.ServiceEntry.Kind,
 		Name:      hostname,
 		Namespace: namespace,
 	}: {}})
@@ -189,7 +189,7 @@ func (s *DiscoveryServer) getOrCreateEndpointShard(serviceName, namespace string
 	s.EndpointShardsByService[serviceName][namespace] = ep
 	// Clear the cache here to avoid race in cache writes (see edsCacheUpdate for details).
 	s.Cache.Clear(map[model.ConfigKey]struct{}{{
-		Kind:      gvk.ServiceEntry,
+		Kind:      gvk.ServiceEntry.Kind,
 		Name:      serviceName,
 		Namespace: namespace,
 	}: {}})
@@ -208,7 +208,7 @@ func (s *DiscoveryServer) deleteEndpointShards(shard string, serviceName, namesp
 		delete(epShards.Shards, shard)
 		// Clear the cache here to avoid race in cache writes (see edsCacheUpdate for details).
 		s.Cache.Clear(map[model.ConfigKey]struct{}{{
-			Kind:      gvk.ServiceEntry,
+			Kind:      gvk.ServiceEntry.Kind,
 			Name:      serviceName,
 			Namespace: namespace,
 		}: {}})
@@ -231,7 +231,7 @@ func (s *DiscoveryServer) deleteService(cluster, serviceName, namespace string) 
 		s.UpdateServiceAccount(epShards, serviceName)
 		// Clear the cache here to avoid race in cache writes (see edsCacheUpdate for details).
 		s.Cache.Clear(map[model.ConfigKey]struct{}{{
-			Kind:      gvk.ServiceEntry,
+			Kind:      gvk.ServiceEntry.Kind,
 			Name:      serviceName,
 			Namespace: namespace,
 		}: {}})
@@ -351,13 +351,13 @@ type EdsGenerator struct {
 var _ model.XdsResourceGenerator = &EdsGenerator{}
 
 // Map of all configs that do not impact EDS
-var skippedEdsConfigs = map[config.GroupVersionKind]struct{}{
-	gvk.Gateway:               {},
-	gvk.VirtualService:        {},
-	gvk.WorkloadGroup:         {},
-	gvk.AuthorizationPolicy:   {},
-	gvk.RequestAuthentication: {},
-	gvk.Secret:                {},
+var skippedEdsConfigs = map[string]struct{}{
+	gvk.Gateway.Kind:               {},
+	gvk.VirtualService.Kind:        {},
+	gvk.WorkloadGroup.Kind:         {},
+	gvk.AuthorizationPolicy.Kind:   {},
+	gvk.RequestAuthentication.Kind: {},
+	gvk.Secret.Kind:                {},
 }
 
 func edsNeedsPush(updates model.XdsUpdates) bool {
@@ -380,7 +380,7 @@ func (eds *EdsGenerator) Generate(proxy *model.Proxy, push *model.PushContext, w
 	}
 	var edsUpdatedServices map[string]struct{}
 	if !req.Full {
-		edsUpdatedServices = model.ConfigNamesOfKind(req.ConfigsUpdated, gvk.ServiceEntry)
+		edsUpdatedServices = model.ConfigNamesOfKind(req.ConfigsUpdated, gvk.ServiceEntry.Kind)
 	}
 	resources := make(model.Resources, 0)
 	empty := 0

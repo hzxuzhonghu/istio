@@ -248,7 +248,7 @@ func getUpdatedConfigs(services []*model.Service) map[model.ConfigKey]struct{} {
 	configsUpdated := map[model.ConfigKey]struct{}{}
 	for _, svc := range services {
 		configsUpdated[model.ConfigKey{
-			Kind:      gvk.ServiceEntry,
+			Kind:      gvk.ServiceEntry.Kind,
 			Name:      string(svc.Hostname),
 			Namespace: svc.Attributes.Namespace,
 		}] = struct{}{}
@@ -940,7 +940,7 @@ func autoAllocateIPs(services []*model.Service) []*model.Service {
 
 func makeConfigKey(svc *model.Service) model.ConfigKey {
 	return model.ConfigKey{
-		Kind:      gvk.ServiceEntry,
+		Kind:      gvk.ServiceEntry.Kind,
 		Name:      string(svc.Hostname),
 		Namespace: svc.Attributes.Namespace,
 	}

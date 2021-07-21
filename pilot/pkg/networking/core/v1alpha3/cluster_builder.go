@@ -364,10 +364,10 @@ func (t *clusterCache) Key() string {
 func (t clusterCache) DependentConfigs() []model.ConfigKey {
 	configs := []model.ConfigKey{}
 	if t.destinationRule != nil {
-		configs = append(configs, model.ConfigKey{Kind: gvk.DestinationRule, Name: t.destinationRule.Name, Namespace: t.destinationRule.Namespace})
+		configs = append(configs, model.ConfigKey{Kind: gvk.DestinationRule.Kind, Name: t.destinationRule.Name, Namespace: t.destinationRule.Namespace})
 	}
 	if t.service != nil {
-		configs = append(configs, model.ConfigKey{Kind: gvk.ServiceEntry, Name: string(t.service.Hostname), Namespace: t.service.Attributes.Namespace})
+		configs = append(configs, model.ConfigKey{Kind: gvk.ServiceEntry.Kind, Name: string(t.service.Hostname), Namespace: t.service.Attributes.Namespace})
 	}
 	return configs
 }

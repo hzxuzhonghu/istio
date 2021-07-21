@@ -71,7 +71,7 @@ func NewXdsServer(stop chan struct{}, gen model.XdsResourceGenerator) *xds.Disco
 
 		names := sets.NewSet(wr.ResourceNames...)
 		found := false
-		for name := range model.ConfigsOfKind(req.ConfigsUpdated, gvk.Secret) {
+		for name := range model.ConfigsOfKind(req.ConfigsUpdated, gvk.Secret.Kind) {
 			if names.Contains(name.Name) {
 				found = true
 				break
@@ -168,7 +168,7 @@ func (s *sdsservice) Generate(_ *model.Proxy, _ *model.PushContext, w *model.Wat
 	names := []string{}
 	watched := sets.NewSet(w.ResourceNames...)
 	for i := range updates.ConfigsUpdated {
-		if i.Kind == gvk.Secret && watched.Contains(i.Name) {
+		if i.Kind == gvk.Secret.Kind && watched.Contains(i.Name) {
 			names = append(names, i.Name)
 		}
 	}

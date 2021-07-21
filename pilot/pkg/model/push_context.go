@@ -729,7 +729,7 @@ func (ps *PushContext) VirtualServicesForGateway(proxy *Proxy, gateway string) [
 func (ps *PushContext) DelegateVirtualServicesConfigKey(vses []config.Config) []ConfigKey {
 	var out []ConfigKey
 	for _, vs := range vses {
-		out = append(out, ps.virtualServiceIndex.delegates[ConfigKey{Kind: gvk.VirtualService, Namespace: vs.Namespace, Name: vs.Name}]...)
+		out = append(out, ps.virtualServiceIndex.delegates[ConfigKey{Kind: gvk.VirtualService.Kind, Namespace: vs.Namespace, Name: vs.Name}]...)
 	}
 
 	return out
@@ -1026,29 +1026,29 @@ func (ps *PushContext) updateContext(
 
 	for conf := range pushReq.ConfigsUpdated {
 		switch conf.Kind {
-		case gvk.ServiceEntry:
+		case gvk.ServiceEntry.Kind:
 			servicesChanged = true
-		case gvk.DestinationRule:
+		case gvk.DestinationRule.Kind:
 			destinationRulesChanged = true
-		case gvk.VirtualService:
+		case gvk.VirtualService.Kind:
 			virtualServicesChanged = true
-		case gvk.Gateway:
+		case gvk.Gateway.Kind:
 			gatewayChanged = true
-		case gvk.Sidecar:
+		case gvk.Sidecar.Kind:
 			sidecarsChanged = true
-		case gvk.EnvoyFilter:
+		case gvk.EnvoyFilter.Kind:
 			envoyFiltersChanged = true
-		case gvk.AuthorizationPolicy:
+		case gvk.AuthorizationPolicy.Kind:
 			authzChanged = true
-		case gvk.RequestAuthentication,
-			gvk.PeerAuthentication:
+		case gvk.RequestAuthentication.Kind,
+			gvk.PeerAuthentication.Kind:
 			authnChanged = true
-		case gvk.HTTPRoute, gvk.TCPRoute, gvk.GatewayClass, gvk.ServiceApisGateway, gvk.TLSRoute:
+		case gvk.HTTPRoute.Kind, gvk.TCPRoute.Kind, gvk.GatewayClass.Kind, gvk.ServiceApisGateway.Kind, gvk.TLSRoute.Kind:
 			gatewayAPIChanged = true
 			// VS and GW are derived from gatewayAPI, so if it changed we need to update those as well
 			virtualServicesChanged = true
 			gatewayChanged = true
-		case gvk.Telemetry:
+		case gvk.Telemetry.Kind:
 			telemetryChanged = true
 		}
 	}

@@ -639,9 +639,9 @@ func (s *DiscoveryServer) computeProxyState(proxy *model.Proxy, request *model.P
 		}
 		for conf := range request.ConfigsUpdated {
 			switch conf.Kind {
-			case gvk.ServiceEntry, gvk.DestinationRule, gvk.VirtualService, gvk.Sidecar:
+			case gvk.ServiceEntry.Kind, gvk.DestinationRule.Kind, gvk.VirtualService.Kind, gvk.Sidecar.Kind:
 				sidecar = true
-			case gvk.Gateway:
+			case gvk.Gateway.Kind:
 				gateway = true
 			}
 		}

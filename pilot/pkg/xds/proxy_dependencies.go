@@ -16,15 +16,14 @@ package xds
 
 import (
 	"istio.io/istio/pilot/pkg/model"
-	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/gvk"
 )
 
 // configKindAffectedProxyTypes contains known config types which may affect certain node types.
-var configKindAffectedProxyTypes = map[config.GroupVersionKind][]model.NodeType{
-	gvk.Gateway: {model.Router},
-	gvk.Secret:  {model.Router},
-	gvk.Sidecar: {model.SidecarProxy},
+var configKindAffectedProxyTypes = map[string][]model.NodeType{
+	gvk.Gateway.Kind: {model.Router},
+	gvk.Secret.Kind:  {model.Router},
+	gvk.Sidecar.Kind: {model.SidecarProxy},
 }
 
 // ConfigAffectsProxy checks if a pushEv will affect a specified proxy. That means whether the push will be performed
@@ -83,7 +82,7 @@ func DefaultProxyNeedsPush(proxy *model.Proxy, req *model.PushRequest) bool {
 	if len(proxy.ServiceInstances) > 0 && req.ConfigsUpdated != nil {
 		svc := proxy.ServiceInstances[0].Service
 		if _, ok := req.ConfigsUpdated[model.ConfigKey{
-			Kind:      gvk.ServiceEntry,
+			Kind:      gvk.ServiceEntry.Kind,
 			Name:      string(svc.Hostname),
 			Namespace: svc.Attributes.Namespace,
 		}]; ok {

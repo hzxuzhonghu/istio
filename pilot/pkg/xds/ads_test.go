@@ -183,7 +183,7 @@ func TestAdsPushScoping(t *testing.T) {
 			hostname := host.Name(name)
 			s.Discovery.MemRegistry.RemoveService(hostname)
 			configsUpdated[model.ConfigKey{
-				Kind:      gvk.ServiceEntry,
+				Kind:      gvk.ServiceEntry.Kind,
 				Name:      string(hostname),
 				Namespace: ns,
 			}] = struct{}{}
@@ -206,7 +206,7 @@ func TestAdsPushScoping(t *testing.T) {
 		for _, name := range names {
 			hostname := host.Name(name)
 			configsUpdated[model.ConfigKey{
-				Kind:      gvk.ServiceEntry,
+				Kind:      gvk.ServiceEntry.Kind,
 				Name:      string(hostname),
 				Namespace: ns,
 			}] = struct{}{}
@@ -243,7 +243,7 @@ func TestAdsPushScoping(t *testing.T) {
 		}
 
 		s.Discovery.ConfigUpdate(&model.PushRequest{Full: false, ConfigsUpdated: map[model.ConfigKey]struct{}{
-			{Kind: gvk.ServiceEntry, Name: string(hostname), Namespace: model.IstioDefaultConfigNamespace}: {},
+			{Kind: gvk.ServiceEntry.Kind, Name: string(hostname), Namespace: model.IstioDefaultConfigNamespace}: {},
 		}})
 	}
 

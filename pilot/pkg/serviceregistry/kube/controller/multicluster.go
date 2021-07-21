@@ -340,7 +340,7 @@ func (m *Multicluster) updateHandler(svc *model.Service) {
 		req := &model.PushRequest{
 			Full: true,
 			ConfigsUpdated: map[model.ConfigKey]struct{}{{
-				Kind:      gvk.ServiceEntry,
+				Kind:      gvk.ServiceEntry.Kind,
 				Name:      string(svc.Hostname),
 				Namespace: svc.Attributes.Namespace,
 			}: {}},

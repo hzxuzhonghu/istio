@@ -72,7 +72,7 @@ func processEndpointEvent(c *Controller, epc kubeEndpointsController, name strin
 					Full: true,
 					// TODO: extend and set service instance type, so no need to re-init push context
 					ConfigsUpdated: map[model.ConfigKey]struct{}{{
-						Kind:      gvk.ServiceEntry,
+						Kind:      gvk.ServiceEntry.Kind,
 						Name:      string(hostname),
 						Namespace: svc.Namespace,
 					}: {}},

@@ -77,7 +77,7 @@ func TestMergeUpdateRequest(t *testing.T) {
 				Push:  push0,
 				Start: t0,
 				ConfigsUpdated: map[ConfigKey]struct{}{
-					{Kind: config.GroupVersionKind{Kind: "cfg1"}, Namespace: "ns1"}: {},
+					{Kind: "cfg1", Namespace: "ns1"}: {},
 				},
 				Reason: []TriggerReason{ServiceUpdate, ServiceUpdate},
 			},
@@ -86,7 +86,7 @@ func TestMergeUpdateRequest(t *testing.T) {
 				Push:  push1,
 				Start: t1,
 				ConfigsUpdated: map[ConfigKey]struct{}{
-					{Kind: config.GroupVersionKind{Kind: "cfg2"}, Namespace: "ns2"}: {},
+					{Kind: "cfg2", Namespace: "ns2"}: {},
 				},
 				Reason: []TriggerReason{EndpointUpdate},
 			},
@@ -95,8 +95,8 @@ func TestMergeUpdateRequest(t *testing.T) {
 				Push:  push1,
 				Start: t0,
 				ConfigsUpdated: map[ConfigKey]struct{}{
-					{Kind: config.GroupVersionKind{Kind: "cfg1"}, Namespace: "ns1"}: {},
-					{Kind: config.GroupVersionKind{Kind: "cfg2"}, Namespace: "ns2"}: {},
+					{Kind: "cfg1", Namespace: "ns1"}: {},
+					{Kind: "cfg2", Namespace: "ns2"}: {},
 				},
 				Reason: []TriggerReason{ServiceUpdate, ServiceUpdate, EndpointUpdate},
 			},
@@ -105,7 +105,7 @@ func TestMergeUpdateRequest(t *testing.T) {
 			"skip config type merge: one empty",
 			&PushRequest{Full: true, ConfigsUpdated: nil},
 			&PushRequest{Full: true, ConfigsUpdated: map[ConfigKey]struct{}{{
-				Kind: config.GroupVersionKind{Kind: "cfg2"},
+				Kind: "cfg2",
 			}: {}}},
 			PushRequest{Full: true, ConfigsUpdated: nil, Reason: []TriggerReason{}},
 		},
@@ -715,7 +715,7 @@ func TestInitPushContext(t *testing.T) {
 	newPush := NewPushContext()
 	if err := newPush.InitContext(env, old, &PushRequest{
 		ConfigsUpdated: map[ConfigKey]struct{}{
-			{Kind: gvk.Secret}: {},
+			{Kind: gvk.Secret.Kind}: {},
 		},
 	}); err != nil {
 		t.Fatal(err)

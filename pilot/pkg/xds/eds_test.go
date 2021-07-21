@@ -76,7 +76,7 @@ func TestIncrementalPush(t *testing.T) {
 		s.Discovery.Push(&model.PushRequest{
 			Full: false,
 			ConfigsUpdated: map[model.ConfigKey]struct{}{
-				{Name: "destall.default.svc.cluster.local", Namespace: "testns", Kind: gvk.ServiceEntry}: {},
+				{Name: "destall.default.svc.cluster.local", Namespace: "testns", Kind: gvk.ServiceEntry.Kind}: {},
 			},
 		})
 		if err := ads.WaitSingle(time.Second*5, v3.EndpointType, v3.ClusterType); err != nil {
@@ -88,8 +88,8 @@ func TestIncrementalPush(t *testing.T) {
 		s.Discovery.Push(&model.PushRequest{
 			Full: true,
 			ConfigsUpdated: map[model.ConfigKey]struct{}{
-				{Name: "foo.bar", Namespace: "default", Kind: gvk.ServiceEntry}:   {},
-				{Name: "destall", Namespace: "testns", Kind: gvk.DestinationRule}: {},
+				{Name: "foo.bar", Namespace: "default", Kind: gvk.ServiceEntry.Kind}:   {},
+				{Name: "destall", Namespace: "testns", Kind: gvk.DestinationRule.Kind}: {},
 			},
 		})
 		if _, err := ads.Wait(time.Second*5, watchAll...); err != nil {
@@ -104,7 +104,7 @@ func TestIncrementalPush(t *testing.T) {
 		s.Discovery.Push(&model.PushRequest{
 			Full: true,
 			ConfigsUpdated: map[model.ConfigKey]struct{}{
-				{Name: "destall", Namespace: "testns", Kind: gvk.DestinationRule}: {},
+				{Name: "destall", Namespace: "testns", Kind: gvk.DestinationRule.Kind}: {},
 			},
 		})
 		if _, err := ads.Wait(time.Second*5, v3.ClusterType, v3.EndpointType); err != nil {
@@ -634,7 +634,7 @@ func testOverlappingPorts(s *xds.FakeDiscoveryServer, adsc *adsc.ADSC, t *testin
 	s.Discovery.Push(&model.PushRequest{
 		Full: true,
 		ConfigsUpdated: map[model.ConfigKey]struct{}{{
-			Kind: gvk.ServiceEntry,
+			Kind: gvk.ServiceEntry.Kind,
 			Name: "overlapping.cluster.local",
 		}: {}},
 	})
@@ -889,7 +889,7 @@ func multipleRequest(s *xds.FakeDiscoveryServer, inc bool, nclients,
 			s.Discovery.AdsPushAll(strconv.Itoa(j), &model.PushRequest{
 				Full: false,
 				ConfigsUpdated: map[model.ConfigKey]struct{}{{
-					Kind: gvk.ServiceEntry,
+					Kind: gvk.ServiceEntry.Kind,
 					Name: edsIncSvc,
 				}: {}},
 				Push: s.Discovery.Env.PushContext,

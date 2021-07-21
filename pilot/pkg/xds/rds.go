@@ -19,7 +19,6 @@ import (
 
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/util"
-	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/gvk"
 )
 
@@ -30,13 +29,13 @@ type RdsGenerator struct {
 var _ model.XdsResourceGenerator = &RdsGenerator{}
 
 // Map of all configs that do not impact RDS
-var skippedRdsConfigs = map[config.GroupVersionKind]struct{}{
-	gvk.WorkloadEntry:         {},
-	gvk.WorkloadGroup:         {},
-	gvk.AuthorizationPolicy:   {},
-	gvk.RequestAuthentication: {},
-	gvk.PeerAuthentication:    {},
-	gvk.Secret:                {},
+var skippedRdsConfigs = map[string]struct{}{
+	gvk.WorkloadEntry.Kind:         {},
+	gvk.WorkloadGroup.Kind:         {},
+	gvk.AuthorizationPolicy.Kind:   {},
+	gvk.RequestAuthentication.Kind: {},
+	gvk.PeerAuthentication.Kind:    {},
+	gvk.Secret.Kind:                {},
 }
 
 func rdsNeedsPush(req *model.PushRequest) bool {

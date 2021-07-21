@@ -55,7 +55,7 @@ func (sr SecretResource) DependentTypes() []config.GroupVersionKind {
 }
 
 func (sr SecretResource) DependentConfigs() []model.ConfigKey {
-	return relatedConfigs(model.ConfigKey{Kind: gvk.Secret, Name: sr.Name, Namespace: sr.Namespace})
+	return relatedConfigs(model.ConfigKey{Kind: gvk.Secret.Kind, Name: sr.Name, Namespace: sr.Namespace})
 }
 
 func (sr SecretResource) Cacheable() bool {
@@ -87,7 +87,7 @@ func needsUpdate(proxy *model.Proxy, updates model.XdsUpdates) bool {
 	if len(updates) == 0 {
 		return true
 	}
-	if len(model.ConfigNamesOfKind(updates, gvk.Secret)) > 0 {
+	if len(model.ConfigNamesOfKind(updates, gvk.Secret.Kind)) > 0 {
 		return true
 	}
 	return false
@@ -122,7 +122,7 @@ func (s *SecretGen) Generate(proxy *model.Proxy, push *model.PushContext, w *mod
 	}
 	var updatedSecrets map[model.ConfigKey]struct{}
 	if !req.Full {
-		updatedSecrets = model.ConfigsOfKind(req.ConfigsUpdated, gvk.Secret)
+		updatedSecrets = model.ConfigsOfKind(req.ConfigsUpdated, gvk.Secret.Kind)
 	}
 	results := model.Resources{}
 	cached, regenerated := 0, 0
@@ -135,7 +135,7 @@ func (s *SecretGen) Generate(proxy *model.Proxy, push *model.PushContext, w *mod
 		}
 
 		if updatedSecrets != nil {
-			if !containsAny(updatedSecrets, relatedConfigs(model.ConfigKey{Kind: gvk.Secret, Name: sr.Name, Namespace: sr.Namespace})) {
+			if !containsAny(updatedSecrets, relatedConfigs(model.ConfigKey{Kind: gvk.Secret.Kind, Name: sr.Name, Namespace: sr.Namespace})) {
 				// This is an incremental update, filter out secrets that are not updated.
 				continue
 			}

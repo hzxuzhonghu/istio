@@ -52,8 +52,8 @@ func TestProxyNeedsPush(t *testing.T) {
 	}
 	gateway := &model.Proxy{Type: model.Router}
 
-	sidecarScopeKindNames := map[config.GroupVersionKind]string{
-		gvk.ServiceEntry: svcName, gvk.VirtualService: vsName, gvk.DestinationRule: drName, gvk.Sidecar: scName,
+	sidecarScopeKindNames := map[string]string{
+		gvk.ServiceEntry.Kind: svcName, gvk.VirtualService.Kind: vsName, gvk.DestinationRule.Kind: drName, gvk.Sidecar.Kind: scName,
 	}
 	for kind, name := range sidecarScopeKindNames {
 		sidecar.SidecarScope.AddConfigDependencies(model.ConfigKey{Kind: kind, Name: name, Namespace: nsName})
@@ -74,19 +74,19 @@ func TestProxyNeedsPush(t *testing.T) {
 		{"no namespace or configs", sidecar, nil, true},
 		{"gateway config for sidecar", sidecar, map[model.ConfigKey]struct{}{
 			{
-				Kind: gvk.Gateway,
+				Kind: gvk.Gateway.Kind,
 				Name: generalName, Namespace: nsName,
 			}: {},
 		}, false},
 		{"gateway config for gateway", gateway, map[model.ConfigKey]struct{}{
 			{
-				Kind: gvk.Gateway,
+				Kind: gvk.Gateway.Kind,
 				Name: generalName, Namespace: nsName,
 			}: {},
 		}, true},
 		{"sidecar config for gateway", gateway, map[model.ConfigKey]struct{}{
 			{
-				Kind: gvk.Sidecar,
+				Kind: gvk.Sidecar.Kind,
 				Name: scName, Namespace: nsName,
 			}: {},
 		}, false},
@@ -94,30 +94,30 @@ func TestProxyNeedsPush(t *testing.T) {
 			"invalid config for sidecar", sidecar,
 			map[model.ConfigKey]struct{}{
 				{
-					Kind: config.GroupVersionKind{Kind: invalidKind}, Name: generalName, Namespace: nsName,
+					Kind: invalidKind, Name: generalName, Namespace: nsName,
 				}: {},
 			},
 			true,
 		},
 		{"mixture matched and unmatched config for sidecar", sidecar, map[model.ConfigKey]struct{}{
-			{Kind: gvk.DestinationRule, Name: drName, Namespace: nsName}:                   {},
-			{Kind: gvk.ServiceEntry, Name: svcName + invalidNameSuffix, Namespace: nsName}: {},
+			{Kind: gvk.DestinationRule.Kind, Name: drName, Namespace: nsName}:                   {},
+			{Kind: gvk.ServiceEntry.Kind, Name: svcName + invalidNameSuffix, Namespace: nsName}: {},
 		}, true},
 		{"mixture unmatched and unmatched config for sidecar", sidecar, map[model.ConfigKey]struct{}{
-			{Kind: gvk.DestinationRule, Name: drName + invalidNameSuffix, Namespace: nsName}: {},
-			{Kind: gvk.ServiceEntry, Name: svcName + invalidNameSuffix, Namespace: nsName}:   {},
+			{Kind: gvk.DestinationRule.Kind, Name: drName + invalidNameSuffix, Namespace: nsName}: {},
+			{Kind: gvk.ServiceEntry.Kind, Name: svcName + invalidNameSuffix, Namespace: nsName}:   {},
 		}, false},
 		{"empty configsUpdated for sidecar", sidecar, nil, true},
 	}
 
 	for kind, name := range sidecarScopeKindNames {
 		cases = append(cases, Case{ // valid name
-			name:    fmt.Sprintf("%s config for sidecar", kind.Kind),
+			name:    fmt.Sprintf("%s config for sidecar", kind),
 			proxy:   sidecar,
 			configs: map[model.ConfigKey]struct{}{{Kind: kind, Name: name, Namespace: nsName}: {}},
 			want:    true,
 		}, Case{ // invalid name
-			name:    fmt.Sprintf("%s unmatched config for sidecar", kind.Kind),
+			name:    fmt.Sprintf("%s unmatched config for sidecar", kind),
 			proxy:   sidecar,
 			configs: map[model.ConfigKey]struct{}{{Kind: kind, Name: name + invalidNameSuffix, Namespace: nsName}: {}},
 			want:    false,
@@ -132,13 +132,13 @@ func TestProxyNeedsPush(t *testing.T) {
 			Case{
 				name:    fmt.Sprintf("%s config for sidecar in same namespace", kind.Kind),
 				proxy:   sidecar,
-				configs: map[model.ConfigKey]struct{}{{Kind: kind, Name: generalName, Namespace: nsName}: {}},
+				configs: map[model.ConfigKey]struct{}{{Kind: kind.Kind, Name: generalName, Namespace: nsName}: {}},
 				want:    true,
 			},
 			Case{
 				name:    fmt.Sprintf("%s config for sidecar in different namespace", kind.Kind),
 				proxy:   sidecar,
-				configs: map[model.ConfigKey]struct{}{{Kind: kind, Name: generalName, Namespace: "invalid-namespace"}: {}},
+				configs: map[model.ConfigKey]struct{}{{Kind: kind.Kind, Name: generalName, Namespace: "invalid-namespace"}: {}},
 				want:    false,
 			},
 		)

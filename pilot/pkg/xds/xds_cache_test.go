@@ -105,7 +105,7 @@ func TestXdsCache(t *testing.T) {
 			t.Fatalf("unexpected result: %v, want %v", got, any2)
 		}
 
-		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.ServiceEntry, Name: "foo.com"}: {}})
+		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.ServiceEntry.Kind, Name: "foo.com"}: {}})
 		if _, _, f := c.Get(ep1); f {
 			t.Fatalf("unexpected result, found key when not expected: %v", c.Keys())
 		}
@@ -122,7 +122,7 @@ func TestXdsCache(t *testing.T) {
 		if got, _, _ := c.Get(ep2); got != any2 {
 			t.Fatalf("unexpected result: %v, want %v", got, any2)
 		}
-		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.ServiceEntry, Name: "foo.com"}: {}})
+		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.ServiceEntry.Kind, Name: "foo.com"}: {}})
 		if _, _, f := c.Get(ep1); f {
 			t.Fatalf("unexpected result, found key when not expected: %v", c.Keys())
 		}
@@ -145,14 +145,14 @@ func TestXdsCache(t *testing.T) {
 		if got, _, _ := c.Get(ep2); got != any2 {
 			t.Fatalf("unexpected result: %v, want %v", got, any2)
 		}
-		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.DestinationRule, Name: "a", Namespace: "b"}: {}})
+		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.DestinationRule.Kind, Name: "a", Namespace: "b"}: {}})
 		if _, _, f := c.Get(ep1); f {
 			t.Fatalf("unexpected result, found key when not expected: %v", c.Keys())
 		}
 		if got, _, _ := c.Get(ep2); got != any2 {
 			t.Fatalf("unexpected result: %v, want %v", got, any2)
 		}
-		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.DestinationRule, Name: "b", Namespace: "b"}: {}})
+		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.DestinationRule.Kind, Name: "b", Namespace: "b"}: {}})
 		if _, _, f := c.Get(ep1); f {
 			t.Fatalf("unexpected result, found key when not expected: %v", c.Keys())
 		}
@@ -183,7 +183,7 @@ func TestXdsCache(t *testing.T) {
 		addWithToken(c, ep1, any1)
 		addWithToken(c, ep2, any2)
 
-		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.PeerAuthentication}: {}})
+		c.Clear(map[model.ConfigKey]struct{}{{Kind: gvk.PeerAuthentication.Kind}: {}})
 		if len(c.Keys()) != 0 {
 			t.Fatalf("expected no keys, got: %v", c.Keys())
 		}
