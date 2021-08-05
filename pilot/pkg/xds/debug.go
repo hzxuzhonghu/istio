@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -205,6 +206,7 @@ func (s *DiscoveryServer) AddDebugHandlers(mux, internalMux *http.ServeMux, enab
 	s.addDebugHandler(mux, internalMux, "/debug/exportz", "List endpoints that been exported via MCS", s.exportz)
 
 	s.addDebugHandler(mux, internalMux, "/debug/list", "List all supported debug commands in json", s.List)
+	s.addDebugHandler(mux, internalMux, "/debug/free", "Force free memory", s.free)
 }
 
 func (s *DiscoveryServer) addDebugHandler(mux *http.ServeMux, internalMux *http.ServeMux,
@@ -731,6 +733,11 @@ func (s *DiscoveryServer) Debug(w http.ResponseWriter, req *http.Request) {
 		istiolog.Errorf("Error in rendering index template %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+func (s *DiscoveryServer) free(w http.ResponseWriter, req *http.Request) {
+	debug.FreeOSMemory()
+	w.WriteHeader(http.StatusOK)
 }
 
 // List all the supported debug commands in json.
