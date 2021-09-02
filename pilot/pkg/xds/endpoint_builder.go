@@ -478,7 +478,8 @@ func (c *mtlsChecker) computeForEndpoint(ep *model.IstioEndpoint) {
 			return
 		}
 	}
-	if envoytransportSocketMetadata(ep.EnvoyEndpoint, model.TLSModeLabelShortname) != model.IstioMutualTLSModeLabel {
+
+	if ep.TLSMode != model.IstioMutualTLSModeLabel {
 		log.Infof("------ %s mtls disabled because no tlsMode: istio label ", lbEpKey(ep.EnvoyEndpoint))
 		c.mtlsDisabledHosts[lbEpKey(ep.EnvoyEndpoint)] = struct{}{}
 
