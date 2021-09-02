@@ -328,8 +328,11 @@ func (b *EndpointBuilder) buildLocalityLbEndpointsFromShards(
 				b.mtlsChecker.computeForEndpoint(ep)
 				if features.EnableAutomTLSCheckPolicies {
 					tlsMode := ep.TLSMode
-					if b.mtlsChecker != nil && b.mtlsChecker.isMtlsDisabled(ep.EnvoyEndpoint) {
+					if b.mtlsChecker.isMtlsDisabled(ep.EnvoyEndpoint) {
 						tlsMode = ""
+					}
+					if svcPort.Port == 7070 {
+						log.Infof("-------tls mode %q", tlsMode)
 					}
 					if nep, modified := util.MaybeApplyTLSModeLabel(ep.EnvoyEndpoint, tlsMode); modified {
 						ep.EnvoyEndpoint = nep
@@ -412,7 +415,6 @@ func buildEnvoyLbEndpoint(e *model.IstioEndpoint) *endpoint.LbEndpoint {
 
 	// Istio telemetry depends on the metadata value being set for endpoints in the mesh.
 	// Istio endpoint level tls transport socket configuration depends on this logic
-	// Do not remove pilot/pkg/xds/fake.go
 	ep.Metadata = util.BuildLbEndpointMetadata(e.Network, e.TLSMode, e.WorkloadName, e.Namespace, e.Locality.ClusterID, e.Labels)
 
 	return ep

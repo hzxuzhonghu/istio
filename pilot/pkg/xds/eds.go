@@ -408,6 +408,11 @@ func (eds *EdsGenerator) Generate(proxy *model.Proxy, push *model.PushContext, w
 			resources = append(resources, marshalledEndpoint)
 			cached++
 		} else {
+			if builder.push.AuthnPolicies != nil {
+				log.Infof("---------proxy %s ep key %v, pa version %s", proxy.ID, builder.Key(), builder.push.AuthnPolicies.AggregateVersion)
+			} else {
+				log.Infof("---------proxy %s ep key %v, no pa", proxy.ID, builder.Key())
+			}
 			l := eds.Server.generateEndpoints(builder)
 			if l == nil {
 				continue

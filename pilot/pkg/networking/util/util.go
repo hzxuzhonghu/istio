@@ -488,7 +488,7 @@ func MergeAnyWithAny(dst *any.Any, src *any.Any) (*any.Any, error) {
 // BuildLbEndpointMetadata adds metadata values to a lb endpoint
 func BuildLbEndpointMetadata(networkID network.ID, tlsMode, workloadname, namespace string,
 	clusterID cluster.ID, labels labels.Instance) *core.Metadata {
-	if networkID == "" && (tlsMode == "" || tlsMode == model.DisabledTLSModeLabel) && !features.EndpointTelemetryLabel {
+	if networkID == "" && tlsMode != model.IstioMutualTLSModeLabel && !features.EndpointTelemetryLabel {
 		return nil
 	}
 
@@ -496,7 +496,7 @@ func BuildLbEndpointMetadata(networkID network.ID, tlsMode, workloadname, namesp
 		FilterMetadata: map[string]*pstruct.Struct{},
 	}
 
-	if tlsMode != "" && tlsMode != model.DisabledTLSModeLabel {
+	if tlsMode == model.IstioMutualTLSModeLabel {
 		metadata.FilterMetadata[EnvoyTransportSocketMetadataKey] = &pstruct.Struct{
 			Fields: map[string]*pstruct.Value{
 				model.TLSModeLabelShortname: {Kind: &pstruct.Value_StringValue{StringValue: tlsMode}},

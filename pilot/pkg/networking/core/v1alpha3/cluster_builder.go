@@ -581,6 +581,9 @@ func (cb *ClusterBuilder) buildLocalityLbEndpoints(proxyNetworkView map[network.
 				Value: instance.Endpoint.GetLoadBalancingWeight(),
 			},
 		}
+		if instance.Endpoint.EndpointPort == 7070 {
+			log.Infof("----------- build lb ep tls mode", instance.Endpoint.TLSMode)
+		}
 		ep.Metadata = util.BuildLbEndpointMetadata(instance.Endpoint.Network, instance.Endpoint.TLSMode, instance.Endpoint.WorkloadName,
 			instance.Endpoint.Namespace, instance.Endpoint.Locality.ClusterID, instance.Endpoint.Labels)
 		locality := instance.Endpoint.Locality.Label
