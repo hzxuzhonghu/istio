@@ -101,8 +101,8 @@ func (cr *store) List(kind config.GroupVersionKind, namespace string) ([]config.
 	}
 	out := make([]config.Config, 0, len(cr.data[kind]))
 	if namespace == "" {
-		for _, ns := range data {
-			ns.Range(func(key, value interface{}) bool {
+		for _, nsMap := range data {
+			nsMap.Range(func(key, value interface{}) bool {
 				out = append(out, value.(config.Config))
 				return true
 			})

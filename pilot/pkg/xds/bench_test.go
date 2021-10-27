@@ -58,6 +58,8 @@ type ConfigInput struct {
 	ConfigName string
 	// Number of services to make
 	Services int
+	// Number of instances to make
+	Instances int
 	// Type of proxy to generate configs for
 	ProxyType model.NodeType
 }
@@ -111,6 +113,12 @@ var testCases = []ConfigInput{
 		Services:  100,
 		ProxyType: model.Router,
 	},
+	{
+		Name:      "serviceentry-workloadentry",
+		Services:  100,
+		Instances: 2000,
+		ProxyType: model.SidecarProxy,
+	},
 }
 
 var sidecarTestCases = func() (res []ConfigInput) {
@@ -140,10 +148,14 @@ func configureBenchmark(t test.Failer) {
 func BenchmarkInitPushContext(b *testing.B) {
 	configureBenchmark(b)
 	for _, tt := range testCases {
+		if tt.Name != "serviceentry-workloadentry" {
+			continue
+		}
 		b.Run(tt.Name, func(b *testing.B) {
 			s, proxy := setupTest(b, tt)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
+				s.Env().PushContext.InitDone.Store(false)
 				initPushContext(s.Env(), proxy)
 			}
 		})
