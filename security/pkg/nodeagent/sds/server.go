@@ -55,7 +55,7 @@ func (s *Server) UpdateCallback(resourceName string) {
 	if s.workloadSds == nil {
 		return
 	}
-	s.workloadSds.XdsServer.ConfigUpdate(&model.PushRequest{
+	s.workloadSds.sdsServer.ConfigUpdate(&model.PushRequest{
 		Full: false,
 		ConfigsUpdated: map[model.ConfigKey]struct{}{
 			{Kind: gvk.Secret, Name: resourceName}: {},

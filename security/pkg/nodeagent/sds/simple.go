@@ -19,14 +19,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	configaggregate "istio.io/istio/pilot/pkg/config/aggregate"
-	"istio.io/istio/pilot/pkg/config/memory"
 	"istio.io/istio/pilot/pkg/model"
-	"istio.io/istio/pilot/pkg/serviceregistry"
-	"istio.io/istio/pilot/pkg/serviceregistry/aggregate"
-	controllermemory "istio.io/istio/pilot/pkg/serviceregistry/memory"
 	"istio.io/istio/pkg/config/mesh"
-	"istio.io/istio/pkg/config/schema/collections"
 )
 
 // Server represents the XDS serving feature of Istiod (pilot).
@@ -45,24 +39,13 @@ type SimpleServer struct {
 	// PushContext.
 	DiscoveryServer *GenericXdsServer
 
-	// MemoryStore is an in-memory config store, part of the aggregate store
-	// used by the discovery server.
-	MemoryConfigStore model.IstioConfigStore
-
 	// GRPCListener is the listener used for GRPC. For agent it is
 	// an insecure port, bound to 127.0.0.1
 	GRPCListener net.Listener
-
-	// syncCh is used for detecting if the stores have synced,
-	// which needs to happen before serving requests.
-	syncCh chan string
-
-	ConfigStoreCache model.ConfigStoreCache
 }
 
-// Creates an basic, functional discovery server, using the same code as Istiod, but
-// backed by an in-memory config and endpoint stores.
-func NewXDS(stop chan struct{}) *SimpleServer {
+// Creates an basic, functional discovery server.
+func newServer() *SimpleServer {
 	env := &model.Environment{
 		PushContext: model.NewPushContext(),
 	}
@@ -72,49 +55,9 @@ func NewXDS(stop chan struct{}) *SimpleServer {
 	env.Init()
 
 	ds := NewGenericXdsServer(env)
-
-	// Config will have a fixed format:
-	// - aggregate store
-	// - one primary (local) memory config
-	// Additional stores can be added dynamically - for example by push or reference from a server.
-	// This is used to implement and test XDS federation (which is not yet final).
-
-	// In-memory config store, controller and istioConfigStore
-	schemas := collections.Pilot
-
-	store := memory.Make(schemas)
 	s := &SimpleServer{
 		DiscoveryServer: ds,
 	}
-	s.syncCh = make(chan string, len(schemas.All()))
-	configController := memory.NewController(store)
-	s.MemoryConfigStore = model.MakeIstioStore(configController)
-
-	// Endpoints/Clusters - using the config store for ServiceEntries
-	serviceControllers := aggregate.NewController(aggregate.Options{})
-
-	sd := controllermemory.NewServiceDiscovery(nil)
-	ds.MemRegistry = sd
-	serviceControllers.AddRegistry(serviceregistry.Simple{
-		ProviderID:       "Mem",
-		ServiceDiscovery: sd,
-		Controller:       sd.Controller,
-	})
-	env.ServiceDiscovery = serviceControllers
-
-	go configController.Run(stop)
-
-	// configStoreCache - with HasSync interface
-	aggregateConfigController, err := configaggregate.MakeCache([]model.ConfigStoreCache{
-		configController,
-	})
-	if err != nil {
-		log.Fatala("Creating aggregate config ", err)
-	}
-
-	// TODO: fix the mess of store interfaces - most are too generic for their own good.
-	s.ConfigStoreCache = aggregateConfigController
-	env.IstioConfigStore = model.MakeIstioStore(aggregateConfigController)
 
 	return s
 }

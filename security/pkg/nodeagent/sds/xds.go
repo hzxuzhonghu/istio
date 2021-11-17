@@ -24,7 +24,6 @@ import (
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
-	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
@@ -35,12 +34,7 @@ import (
 	"istio.io/istio/pilot/pkg/features"
 	istiogrpc "istio.io/istio/pilot/pkg/grpc"
 	"istio.io/istio/pilot/pkg/model"
-	"istio.io/istio/pilot/pkg/networking/util"
-	"istio.io/istio/pilot/pkg/serviceregistry/memory"
-	labelutil "istio.io/istio/pilot/pkg/serviceregistry/util/label"
 	v3 "istio.io/istio/pilot/pkg/xds/v3"
-	"istio.io/istio/pkg/config/schema/gvk"
-	"istio.io/istio/pkg/security"
 	"istio.io/istio/pkg/spiffe"
 )
 
@@ -58,9 +52,6 @@ type GenericXdsServer struct {
 	// Env is the model environment.
 	Env *model.Environment
 
-	// MemRegistry is used for debug and load testing, allow adding services. Visible for testing.
-	MemRegistry *memory.ServiceDiscovery
-
 	// Generators allow customizing the generated config, based on the client metadata.
 	// Key is the generator type - will match the Generator metadata to set the per-connection
 	// default generator, or the combination of Generator metadata and TypeUrl to select a
@@ -72,19 +63,11 @@ type GenericXdsServer struct {
 	// may also choose to not send any updates.
 	ProxyNeedsPush func(proxy *model.Proxy, req *model.PushRequest) bool
 
-	// pushChannel is the buffer used for debouncing.
-	// after debouncing the pushRequest will be sent to pushQueue
 	pushChannel chan *model.PushRequest
 
 	// adsClients reflect active gRPC channels, for both ADS and EDS.
 	adsClients      map[string]*Connection
 	adsClientsMutex sync.RWMutex
-
-	// Authenticators for XDS requests. Should be same/subset of the CA authenticators.
-	Authenticators []security.Authenticator
-
-	// JwtKeyResolver holds a reference to the JWT key resolver instance.
-	JwtKeyResolver *model.JwksResolver
 }
 
 // NewDiscoveryServer creates DiscoveryServer that sources data from Pilot's internal mesh data structures
@@ -107,7 +90,8 @@ func (s *GenericXdsServer) Run(stopCh <-chan struct{}) {
 		case pushRequest := <-s.pushChannel:
 			versionNum++
 			versionLocal := time.Now().Format(time.RFC3339) + "/" + strconv.FormatUint(versionNum, 10)
-			s.AdsPushAll(versionLocal, pushRequest)
+			pushRequest.Push = &model.PushContext{PushVersion: versionLocal}
+			s.sdsPushAll(versionLocal, pushRequest)
 		case <-stopCh:
 			return
 		}
@@ -134,9 +118,6 @@ type Connection struct {
 	// Defines associated identities for the connection
 	Identities []string
 
-	// Time of connection, for debugging
-	Connect time.Time
-
 	// ConID is the connection identifier, used as a key in the connection table.
 	// Currently based on the node name and a counter.
 	ConID string
@@ -149,10 +130,6 @@ type Connection struct {
 
 	// Both ADS and SDS streams implement this interface
 	stream DiscoveryStream
-
-	// Original node metadata, to avoid unmarshal/marshal.
-	// This is included in internal events.
-	node *core.Node
 
 	// initialized channel will be closed when proxy is initialized. Pushes, or anything accessing
 	// the proxy, should not be started until this channel is closed.
@@ -168,15 +145,6 @@ type Connection struct {
 	errorChan chan error
 }
 
-// Event represents a config or registry event that results in a push.
-type Event struct {
-	// pushRequest PushRequest to use for the push.
-	pushRequest *model.PushRequest
-
-	// function to call once a push is finished. This must be called or future changes may be blocked.
-	done func()
-}
-
 func newConnection(peerAddr string, stream DiscoveryStream) *Connection {
 	return &Connection{
 		pushChannel: make(chan *model.PushRequest),
@@ -185,7 +153,6 @@ func newConnection(peerAddr string, stream DiscoveryStream) *Connection {
 		reqChan:     make(chan *discovery.DiscoveryRequest, 1),
 		errorChan:   make(chan error, 1),
 		PeerAddr:    peerAddr,
-		Connect:     time.Now(),
 		stream:      stream,
 	}
 }
@@ -226,7 +193,6 @@ func (s *GenericXdsServer) receive(con *Connection) {
 				con.errorChan <- status.New(codes.InvalidArgument, "missing node information").Err()
 				return
 			}
-			// TODO: We should validate that the namespace in the cert matches the claimed namespace in metadata.
 			if err := s.initConnection(req.Node, con); err != nil {
 				con.errorChan <- err
 				return
@@ -256,6 +222,8 @@ func (s *GenericXdsServer) processRequest(req *discovery.DiscoveryRequest, con *
 		// This is a request, trigger a full push for this type. Override the blocked push (if it exists),
 		// as this full push is guaranteed to be a superset of what we would have pushed from the blocked push.
 		request = &model.PushRequest{Full: true, Push: push}
+	} else {
+		return nil
 	}
 
 	request.Reason = append(request.Reason, model.ProxyRequest)
@@ -446,12 +414,8 @@ func shouldUnsubscribe(request *discovery.DiscoveryRequest) bool {
 // resource names.
 func isWildcardTypeURL(typeURL string) bool {
 	switch typeURL {
-	case v3.SecretType, v3.EndpointType, v3.RouteType, v3.ExtensionConfigurationType:
-		// By XDS spec, these are not wildcard
+	case v3.SecretType:
 		return false
-	case v3.ClusterType, v3.ListenerType:
-		// By XDS spec, these are wildcard
-		return true
 	default:
 		// All of our internal types use wildcard semantics
 		return true
@@ -486,17 +450,7 @@ func (s *GenericXdsServer) initConnection(node *core.Node, con *Connection) erro
 	}
 	// First request so initialize connection id and start tracking it.
 	con.ConID = connectionID(proxy.ID)
-	con.node = node
 	con.proxy = proxy
-	if features.EnableXDSIdentityCheck && con.Identities != nil {
-		// TODO: allow locking down, rejecting unauthenticated requests.
-		id, err := checkConnectionIdentity(con)
-		if err != nil {
-			log.Warnf("Unauthorized XDS: %v with identity %v: %v", con.PeerAddr, con.Identities, err)
-			return status.Newf(codes.PermissionDenied, "authorization failed: %v", err).Err()
-		}
-		con.proxy.VerifiedIdentity = id
-	}
 
 	// Register the connection. this allows pushes to be triggered for the proxy. Note: the timing of
 	// this and initializeProxy important. While registering for pushes *after* initialization is complete seems like
@@ -509,7 +463,7 @@ func (s *GenericXdsServer) initConnection(node *core.Node, con *Connection) erro
 	defer close(con.initialized)
 
 	// Complete full initialization of the proxy
-	if err := s.initializeProxy(node, con); err != nil {
+	if err := s.initializeProxy(con); err != nil {
 		s.closeConnection(con)
 		return err
 	}
@@ -566,7 +520,7 @@ func (s *GenericXdsServer) initProxyMetadata(node *core.Node) (*model.Proxy, err
 
 // initializeProxy completes the initialization of a proxy. It is expected to be called only after
 // initProxyMetadata.
-func (s *GenericXdsServer) initializeProxy(node *core.Node, con *Connection) error {
+func (s *GenericXdsServer) initializeProxy(con *Connection) error {
 	proxy := con.proxy
 	proxy.WatchedResources = map[string]*model.WatchedResource{}
 	// Based on node metadata and version, we can associate a different generator.
@@ -577,71 +531,8 @@ func (s *GenericXdsServer) initializeProxy(node *core.Node, con *Connection) err
 	return nil
 }
 
-func (s *GenericXdsServer) updateProxy(proxy *model.Proxy, request *model.PushRequest) {
-	s.computeProxyState(proxy, request)
-	if util.IsLocalityEmpty(proxy.Locality) {
-		// Get the locality from the proxy's service instances.
-		// We expect all instances to have the same locality.
-		// So its enough to look at the first instance.
-		if len(proxy.ServiceInstances) > 0 {
-			proxy.Locality = util.ConvertLocality(proxy.ServiceInstances[0].Endpoint.Locality.Label)
-			locality := proxy.ServiceInstances[0].Endpoint.Locality.Label
-			// add topology labels to proxy metadata labels
-			proxy.Metadata.Labels = labelutil.AugmentLabels(proxy.Metadata.Labels, proxy.Metadata.ClusterID, locality, proxy.Metadata.Network)
-		}
-	}
-}
-
-func (s *GenericXdsServer) computeProxyState(proxy *model.Proxy, request *model.PushRequest) {
-	proxy.SetWorkloadLabels(s.Env)
-	proxy.SetServiceInstances(s.Env.ServiceDiscovery)
-	// Precompute the sidecar scope and merged gateways associated with this proxy.
-	// Saves compute cycles in networking code. Though this might be redundant sometimes, we still
-	// have to compute this because as part of a config change, a new Sidecar could become
-	// applicable to this proxy
-	var sidecar, gateway bool
-	push := s.globalPushContext()
-	if request == nil {
-		sidecar = true
-		gateway = true
-	} else {
-		push = request.Push
-		if len(request.ConfigsUpdated) == 0 {
-			sidecar = true
-			gateway = true
-		}
-		for conf := range request.ConfigsUpdated {
-			switch conf.Kind {
-			case gvk.ServiceEntry, gvk.DestinationRule, gvk.VirtualService, gvk.Sidecar, gvk.HTTPRoute, gvk.TCPRoute:
-				sidecar = true
-			case gvk.Gateway, gvk.KubernetesGateway, gvk.GatewayClass:
-				gateway = true
-			case gvk.Ingress:
-				sidecar = true
-				gateway = true
-			}
-			if sidecar && gateway {
-				break
-			}
-		}
-	}
-	// compute the sidecarscope for both proxy types whenever it changes.
-	if sidecar {
-		proxy.SetSidecarScope(push)
-	}
-	// only compute gateways for "router" type proxy.
-	if gateway && proxy.Type == model.Router {
-		proxy.SetGatewaysForProxy(push)
-	}
-}
-
 // Compute and send the new configuration for a connection.
 func (s *GenericXdsServer) pushConnection(con *Connection, pushRequest *model.PushRequest) error {
-	if pushRequest.Full {
-		// Update Proxy with current information.
-		s.updateProxy(con.proxy, pushRequest)
-	}
-
 	if !s.ProxyNeedsPush(con.proxy, pushRequest) {
 		log.Debugf("Skipping push to %v, no updates required", con.ConID)
 		return nil
@@ -650,48 +541,22 @@ func (s *GenericXdsServer) pushConnection(con *Connection, pushRequest *model.Pu
 	// Send pushes to all generators
 	// Each Generator is responsible for determining if the push event requires a push
 	for _, w := range orderWatchedResources(con.proxy.WatchedResources) {
-		if !features.EnableFlowControl {
-			// Always send the push if flow control disabled
-			if err := s.pushXds(con, pushRequest.Push, w, pushRequest); err != nil {
-				return err
-			}
-			continue
+		// Always send the push if flow control disabled
+		if err := s.pushXds(con, pushRequest.Push, w, pushRequest); err != nil {
+			return err
 		}
-		// If flow control is enabled, we will only push if we got an ACK for the previous response
-		synced, timeout := con.Synced(w.TypeUrl)
-		if !synced && timeout {
-			// We are not synced, but we have been stuck for too long. We will trigger the push anyways to
-			// avoid any scenario where this may deadlock.
-			// This can possibly be removed in the future if we find this never causes issues
-			log.Warnf("%s: QUEUE TIMEOUT for node:%s", v3.GetShortType(w.TypeUrl), con.proxy.ID)
-		}
-		if synced || timeout {
-			// Send the push now
-			if err := s.pushXds(con, pushRequest.Push, w, pushRequest); err != nil {
-				return err
-			}
-		} else {
-			// The type is not yet synced. Instead of pushing now, which may overload Envoy,
-			// we will wait until the last push is ACKed and trigger the push. See
-			// https://github.com/istio/istio/issues/25685 for details on the performance
-			// impact of sending pushes before Envoy ACKs.
-			log.Debugf("%s: QUEUE for node:%s", v3.GetShortType(w.TypeUrl), con.proxy.ID)
-		}
+		continue
 	}
 	return nil
 }
 
 // PushOrder defines the order that updates will be pushed in. Any types not listed here will be pushed in random
 // order after the types listed here
-var PushOrder = []string{v3.ClusterType, v3.EndpointType, v3.ListenerType, v3.RouteType, v3.SecretType}
+var PushOrder = []string{v3.SecretType}
 
 // KnownOrderedTypeUrls has typeUrls for which we know the order of push.
 var KnownOrderedTypeUrls = map[string]struct{}{
-	v3.ClusterType:  {},
-	v3.EndpointType: {},
-	v3.ListenerType: {},
-	v3.RouteType:    {},
-	v3.SecretType:   {},
+	v3.SecretType: {},
 }
 
 // orderWatchedResources orders the resources in accordance with known push order.
@@ -724,13 +589,13 @@ func (s *GenericXdsServer) Register(rpcs *grpc.Server) {
 	discovery.RegisterAggregatedDiscoveryServiceServer(rpcs, s)
 }
 
-// AdsPushAll implements old style invalidation, generated when any rule or endpoint changes.
+// sdsPushAll implements old style invalidation, generated when any rule or endpoint changes.
 // Primary code path is from v1 discoveryService.clearCache(), which is added as a handler
 // to the model ConfigStorageCache and Controller.
-func (s *GenericXdsServer) AdsPushAll(version string, req *model.PushRequest) {
+func (s *GenericXdsServer) sdsPushAll(version string, req *model.PushRequest) {
 	if !req.Full {
-		log.Infof("XDS: Incremental Pushing:%s ConnectedEndpoints:%d Version:%s",
-			version, s.adsClientCount(), req.Push.PushVersion)
+		log.Infof("XDS: Incremental Pushing: ConnectedEndpoints:%d Version:%s",
+			s.adsClientCount(), version)
 	} else {
 		// Make sure the ConfigsUpdated map exists
 		if req.ConfigsUpdated == nil {
@@ -803,54 +668,6 @@ func (conn *Connection) Synced(typeUrl string) (bool, bool) {
 }
 
 // nolint
-func (conn *Connection) NonceAcked(typeUrl string) string {
-	conn.proxy.RLock()
-	defer conn.proxy.RUnlock()
-	if conn.proxy.WatchedResources != nil && conn.proxy.WatchedResources[typeUrl] != nil {
-		return conn.proxy.WatchedResources[typeUrl].NonceAcked
-	}
-	return ""
-}
-
-// nolint
-func (conn *Connection) NonceSent(typeUrl string) string {
-	conn.proxy.RLock()
-	defer conn.proxy.RUnlock()
-	if conn.proxy.WatchedResources != nil && conn.proxy.WatchedResources[typeUrl] != nil {
-		return conn.proxy.WatchedResources[typeUrl].NonceSent
-	}
-	return ""
-}
-
-func (conn *Connection) Clusters() []string {
-	conn.proxy.RLock()
-	defer conn.proxy.RUnlock()
-	if conn.proxy.WatchedResources != nil && conn.proxy.WatchedResources[v3.EndpointType] != nil {
-		return conn.proxy.WatchedResources[v3.EndpointType].ResourceNames
-	}
-	return []string{}
-}
-
-func (conn *Connection) Routes() []string {
-	conn.proxy.RLock()
-	defer conn.proxy.RUnlock()
-	if conn.proxy.WatchedResources != nil && conn.proxy.WatchedResources[v3.RouteType] != nil {
-		return conn.proxy.WatchedResources[v3.RouteType].ResourceNames
-	}
-	return []string{}
-}
-
-// nolint
-func (conn *Connection) Watching(typeUrl string) bool {
-	conn.proxy.RLock()
-	defer conn.proxy.RUnlock()
-	if conn.proxy.WatchedResources != nil && conn.proxy.WatchedResources[typeUrl] != nil {
-		return true
-	}
-	return false
-}
-
-// nolint
 func (conn *Connection) Watched(typeUrl string) *model.WatchedResource {
 	conn.proxy.RLock()
 	defer conn.proxy.RUnlock()
@@ -885,7 +702,7 @@ func (s *GenericXdsServer) pushXds(con *Connection, push *model.PushContext,
 		return nil
 	}
 
-	res, _, err := gen.Generate(con.proxy, push, w, req)
+	res, logDetail, err := gen.Generate(con.proxy, push, w, req)
 	if err != nil || res == nil {
 		return err
 	}
@@ -893,14 +710,17 @@ func (s *GenericXdsServer) pushXds(con *Connection, push *model.PushContext,
 	resp := &discovery.DiscoveryResponse{
 		TypeUrl:     w.TypeUrl,
 		VersionInfo: push.PushVersion,
-		Nonce:       nonce(push.LedgerVersion),
+		Nonce:       push.PushVersion,
 		Resources:   model.ResourcesToAny(res),
 	}
 
 	if err := con.send(resp); err != nil {
-		log.Warnf("%s: Send failure for node:%s resources:%d: %v",
-			v3.GetShortType(w.TypeUrl), con.proxy.ID, len(res), err)
+		log.Warnf("%s: Send failure for node:%s resources:%d %s: %v",
+			v3.GetShortType(w.TypeUrl), con.proxy.ID, len(res), logDetail.AdditionalInfo, err)
 	}
+
+	log.Debugf("%s: push for node:%s resources:%d %s", v3.GetShortType(w.TypeUrl), req.PushReason(), con.proxy.ID, len(res),
+		logDetail.AdditionalInfo)
 	return err
 }
 
@@ -916,37 +736,8 @@ func (s *GenericXdsServer) AllClients() []*Connection {
 	return clients
 }
 
-func nonce(noncePrefix string) string {
-	return noncePrefix + uuid.New().String()
-}
-
-// // EDSUpdate computes destination address membership across all clusters and networks.
-// // This is the main method implementing EDS.
-// // It replaces InstancesByPort in model - instead of iterating over all endpoints it uses
-// // the hostname-keyed map. And it avoids the conversion from Endpoint to ServiceEntry to envoy
-// // on each step: instead the conversion happens once, when an endpoint is first discovered.
-// func (s *GenericXdsServer) EDSUpdate(shard model.ShardKey, serviceName string, namespace string,
-// 	istioEndpoints []*model.IstioEndpoint) {
-// }
-//
-// // EDSUpdate computes destination address membership across all clusters and networks.
-// // This is the main method implementing EDS.
-// // It replaces InstancesByPort in model - instead of iterating over all endpoints it uses
-// // the hostname-keyed map. And it avoids the conversion from Endpoint to ServiceEntry to envoy
-// // on each step: instead the conversion happens once, when an endpoint is first discovered.
-// func (s *GenericXdsServer) EDSCacheUpdate(shard model.ShardKey, serviceName string, namespace string,
-// 	istioEndpoints []*model.IstioEndpoint) {
-// }
-//
-// // SvcUpdate is a callback from service discovery when service info changes.
-// func (s *GenericXdsServer) SvcUpdate(shard model.ShardKey, hostname string, namespace string, event model.Event) {
-// }
-
 // ConfigUpdate implements ConfigUpdater interface, used to request pushes.
 // It replaces the 'clear cache' from v1.
 func (s *GenericXdsServer) ConfigUpdate(req *model.PushRequest) {
 	s.pushChannel <- req
 }
-
-// func (s *GenericXdsServer) ProxyUpdate(clusterID cluster.ID, ip string) {
-// }

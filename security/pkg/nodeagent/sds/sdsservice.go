@@ -44,7 +44,7 @@ var sdsServiceLog = istiolog.RegisterScope("sds", "SDS service debugging", 0)
 type sdsservice struct {
 	st security.SecretManager
 
-	XdsServer  *GenericXdsServer
+	sdsServer  *GenericXdsServer
 	stop       chan struct{}
 	rootCaPath string
 }
@@ -53,7 +53,7 @@ type sdsservice struct {
 var _ model.XdsResourceGenerator = &sdsservice{}
 
 func NewXdsServer(stop chan struct{}, gen model.XdsResourceGenerator) *GenericXdsServer {
-	s := NewXDS(stop)
+	s := newServer()
 	s.DiscoveryServer.Generators = map[string]model.XdsResourceGenerator{
 		v3.SecretType: gen,
 	}
@@ -90,7 +90,7 @@ func newSDSService(st security.SecretManager, options *security.Options) *sdsser
 		st:   st,
 		stop: make(chan struct{}),
 	}
-	ret.XdsServer = NewXdsServer(ret.stop, ret)
+	ret.sdsServer = NewXdsServer(ret.stop, ret)
 
 	ret.rootCaPath = options.CARootPath
 
@@ -186,7 +186,7 @@ func (s *sdsservice) register(rpcs *grpc.Server) {
 
 // StreamSecrets serves SDS discovery requests and SDS push requests
 func (s *sdsservice) StreamSecrets(stream sds.SecretDiscoveryService_StreamSecretsServer) error {
-	return s.XdsServer.Stream(stream)
+	return s.sdsServer.Stream(stream)
 }
 
 func (s *sdsservice) DeltaSecrets(stream sds.SecretDiscoveryService_DeltaSecretsServer) error {

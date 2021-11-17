@@ -589,7 +589,7 @@ type ServiceDiscovery interface {
 
 	// GetIstioServiceAccounts returns a list of service accounts looked up from
 	// the specified service hostname and ports.
-	// Deprecated - service account tracking moved to XdsServer, incremental.
+	// Deprecated - service account tracking moved to sdsServer, incremental.
 	GetIstioServiceAccounts(svc *Service, ports []int) []string
 
 	// NetworkGateways returns a list of network gateways that can be used to access endpoints

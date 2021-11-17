@@ -575,7 +575,7 @@ func (s *DiscoveryServer) sendPushes(stopCh <-chan struct{}) {
 	doSendPushes(stopCh, s.concurrentPushLimit, s.pushQueue)
 }
 
-// InitGenerators initializes generators to be used by XdsServer.
+// InitGenerators initializes generators to be used by sdsServer.
 func (s *DiscoveryServer) InitGenerators(env *model.Environment, systemNameSpace string) {
 	edsGen := &EdsGenerator{Server: s}
 	s.StatusGen = NewStatusGen(s)
