@@ -29,22 +29,22 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	istiolog "istio.io/pkg/log"
+
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/pkg/networking/util"
 	"istio.io/istio/pilot/pkg/util/sets"
-	"istio.io/istio/pilot/pkg/xds"
 	v3 "istio.io/istio/pilot/pkg/xds/v3"
 	"istio.io/istio/pkg/config/schema/gvk"
 	"istio.io/istio/pkg/security"
-	"istio.io/pkg/log"
 )
 
-var sdsServiceLog = log.RegisterScope("sds", "SDS service debugging", 0)
+var sdsServiceLog = istiolog.RegisterScope("sds", "SDS service debugging", 0)
 
 type sdsservice struct {
 	st security.SecretManager
 
-	XdsServer  *xds.DiscoveryServer
+	XdsServer  *GenericXdsServer
 	stop       chan struct{}
 	rootCaPath string
 }
@@ -52,8 +52,8 @@ type sdsservice struct {
 // Assert we implement the generator interface
 var _ model.XdsResourceGenerator = &sdsservice{}
 
-func NewXdsServer(stop chan struct{}, gen model.XdsResourceGenerator) *xds.DiscoveryServer {
-	s := xds.NewXDS(stop)
+func NewXdsServer(stop chan struct{}, gen model.XdsResourceGenerator) *GenericXdsServer {
+	s := NewXDS(stop)
 	s.DiscoveryServer.Generators = map[string]model.XdsResourceGenerator{
 		v3.SecretType: gen,
 	}
@@ -80,7 +80,7 @@ func NewXdsServer(stop chan struct{}, gen model.XdsResourceGenerator) *xds.Disco
 		}
 		return found
 	}
-	s.DiscoveryServer.Start(stop)
+	go s.DiscoveryServer.Run(stop)
 	return s.DiscoveryServer
 }
 
@@ -199,7 +199,6 @@ func (s *sdsservice) FetchSecrets(ctx context.Context, discReq *discovery.Discov
 
 func (s *sdsservice) Close() {
 	close(s.stop)
-	s.XdsServer.Shutdown()
 }
 
 // toEnvoySecret converts a security.SecretItem to an Envoy tls.Secret
