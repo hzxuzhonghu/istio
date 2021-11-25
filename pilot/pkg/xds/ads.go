@@ -123,7 +123,7 @@ func isExpectedGRPCError(err error) bool {
 	return false
 }
 
-func (s *DiscoveryServer) receive(con *Connection, reqChannel chan *discovery.DiscoveryRequest, errP *error) {
+func (s *DiscoveryServer) receive(con *Connection, reqChannel chan string, errP *error) {
 	defer close(reqChannel) // indicates close of the remote side.
 	firstReq := true
 	for {
@@ -160,30 +160,20 @@ func (s *DiscoveryServer) receive(con *Connection, reqChannel chan *discovery.Di
 			}()
 		}
 
-		select {
-		case reqChannel <- req:
-		case <-con.stream.Context().Done():
-			adsLog.Infof("ADS: %q %s terminated with stream closed", con.PeerAddr, con.ConID)
-			return
+		if s.StatusReporter != nil {
+			s.StatusReporter.RegisterEvent(con.ConID, req.TypeUrl, req.ResponseNonce)
 		}
+
+		if s.shouldRespond(con, req) {
+			select {
+			case reqChannel <- req.TypeUrl:
+			case <-con.stream.Context().Done():
+				adsLog.Infof("ADS: %q %s terminated with stream closed", con.PeerAddr, con.ConID)
+				return
+			}
+		}
+		req = nil
 	}
-}
-
-// processRequest is handling one request. This is currently called from the 'main' thread, which also
-// handles 'push' requests and close - the code will eventually call the 'push' code, and it needs more mutex
-// protection. Original code avoided the mutexes by doing both 'push' and 'process requests' in same thread.
-func (s *DiscoveryServer) processRequest(req *discovery.DiscoveryRequest, con *Connection) error {
-	if s.StatusReporter != nil {
-		s.StatusReporter.RegisterEvent(con.ConID, req.TypeUrl, req.ResponseNonce)
-	}
-
-	if !s.shouldRespond(con, req) {
-		return nil
-	}
-
-	push := s.globalPushContext()
-
-	return s.pushXds(con, push, versionInfo(), con.Watched(req.TypeUrl), &model.PushRequest{Full: true})
 }
 
 // StreamAggregatedResources implements the ADS interface.
@@ -236,7 +226,7 @@ func (s *DiscoveryServer) StreamAggregatedResources(stream discovery.AggregatedD
 	// go routine. If go grpc adds gochannel support for streams this will not be needed.
 	// This also detects close.
 	var receiveError error
-	reqChannel := make(chan *discovery.DiscoveryRequest, 1)
+	reqChannel := make(chan string, 4)
 	go s.receive(con, reqChannel, &receiveError)
 
 	for {
@@ -248,18 +238,18 @@ func (s *DiscoveryServer) StreamAggregatedResources(stream discovery.AggregatedD
 		// the number of long-running go routines, since push is throttled. The main problem is with
 		// closing - the current gRPC library didn't allow closing the stream.
 		select {
-		case req, ok := <-reqChannel:
+		case watchType, ok := <-reqChannel:
 			if !ok {
 				// Remote side closed connection or error processing the request.
 				return receiveError
 			}
-			// processRequest is calling pushXXX, accessing common structs with pushConnection.
+			// this is calling pushXds, accessing common structs with pushConnection.
 			// Adding sync is the second issue to be resolved if we want to save 1/2 of the threads.
-			err := s.processRequest(req, con)
+			push := s.globalPushContext()
+			err := s.pushXds(con, push, versionInfo(), con.Watched(watchType), &model.PushRequest{Full: true})
 			if err != nil {
 				return err
 			}
-
 		case pushEv := <-con.pushChannel:
 			// TODO: possible race condition: if a config change happens while the envoy
 			// was getting the initial config, between LDS and RDS, the push will miss the
@@ -588,6 +578,7 @@ func (s *DiscoveryServer) pushConnection(con *Connection, pushEv *Event) error {
 // PushOrder defines the order that updates will be pushed in. Any types not listed here will be pushed in random
 // order after the types listed here
 var PushOrder = []string{v3.ClusterType, v3.EndpointType, v3.ListenerType, v3.RouteType, v3.SecretType}
+
 var KnownPushOrder = map[string]struct{}{
 	v3.ClusterType:  {},
 	v3.EndpointType: {},
