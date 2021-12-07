@@ -311,6 +311,7 @@ type Proxy struct {
 
 // WatchedResource tracks an active DiscoveryRequest subscription.
 type WatchedResource struct {
+	sync.Mutex
 	// TypeUrl is copied from the DiscoveryRequest.TypeUrl that initiated watching this resource.
 	// nolint
 	TypeUrl string
@@ -355,6 +356,12 @@ type WatchedResource struct {
 	// Note that Envoy may send multiple requests for the same type, for
 	// example to update the set of watched resources or to ACK/NACK.
 	LastRequest *discovery.DiscoveryRequest
+}
+
+func (w *WatchedResource) GetResources() []string {
+	w.Lock()
+	defer w.Unlock()
+	return w.ResourceNames
 }
 
 var istioVersionRegexp = regexp.MustCompile(`^([1-9]+)\.([0-9]+)(\.([0-9]+))?`)
