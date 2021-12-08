@@ -316,7 +316,6 @@ func (s *DiscoveryServer) Stream(stream DiscoveryStream) error {
 	<-con.initialized
 
 	for {
-
 		// make xds request first priority
 		select {
 		case req, ok := <-con.reqChan:
@@ -328,29 +327,26 @@ func (s *DiscoveryServer) Stream(stream DiscoveryStream) error {
 				// Remote side closed connection or error processing the request.
 				return <-con.errorChan
 			}
-		case <-con.stop:
-			return nil
 		default:
-		}
-
-		select {
-		case req, ok := <-con.reqChan:
-			if ok {
-				if err := s.processRequest(req, con); err != nil {
+			select {
+			case req, ok := <-con.reqChan:
+				if ok {
+					if err := s.processRequest(req, con); err != nil {
+						return err
+					}
+				} else {
+					// Remote side closed connection or error processing the request.
+					return <-con.errorChan
+				}
+			case pushEv := <-con.pushChannel:
+				err := s.pushConnection(con, pushEv)
+				pushEv.done()
+				if err != nil {
 					return err
 				}
-			} else {
-				// Remote side closed connection or error processing the request.
-				return <-con.errorChan
+			case <-con.stop:
+				return nil
 			}
-		case pushEv := <-con.pushChannel:
-			err := s.pushConnection(con, pushEv)
-			pushEv.done()
-			if err != nil {
-				return err
-			}
-		case <-con.stop:
-			return nil
 		}
 	}
 }
