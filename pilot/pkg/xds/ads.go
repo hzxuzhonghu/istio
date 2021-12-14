@@ -281,6 +281,8 @@ func (s *DiscoveryServer) Stream(stream DiscoveryStream) error {
 	<-con.initialized
 
 	for {
+		// 1. DiscoveryRequest from client should be processed with highest priority
+		// 2. inner resource events trigger should be processed with lower priority
 		select {
 		case req, ok := <-con.reqChan:
 			if ok {
@@ -293,18 +295,33 @@ func (s *DiscoveryServer) Stream(stream DiscoveryStream) error {
 				// Remote side closed connection or error processing the request.
 				return <-con.errorChan
 			}
-		default:
-			select {
-			case pushEv := <-con.pushChannel:
-				err := s.pushConnection(con, pushEv)
-				pushEv.done()
-				if err != nil {
-					return err
+		case pushEv := <-con.pushChannel:
+		priority:
+			for {
+				select {
+				case req, ok := <-con.reqChan:
+					if ok {
+						push := s.globalPushContext()
+						pushRequest := s.postProcessRequest(req, push, con)
+						if err := s.pushXds(con, push, con.Watched(req.typeURL), pushRequest); err != nil {
+							return err
+						}
+					} else {
+						// Remote side closed connection or error processing the request.
+						return <-con.errorChan
+					}
+				default:
+					break priority
 				}
-			case <-con.stop:
-				return nil
-				// default:
 			}
+
+			err := s.pushConnection(con, pushEv)
+			pushEv.done()
+			if err != nil {
+				return err
+			}
+		case <-con.stop:
+			return nil
 		}
 	}
 }
