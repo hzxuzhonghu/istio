@@ -191,6 +191,7 @@ func (s *DiscoveryServer) receive(con *Connection) {
 		}
 
 		shouldRespond, blockedPushRequest := s.preProcessRequest(req, con)
+		req = nil
 		if !shouldRespond && blockedPushRequest == nil {
 			continue
 		}
