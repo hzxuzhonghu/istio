@@ -329,6 +329,23 @@ func (s *DiscoveryServer) Stream(stream DiscoveryStream) error {
 				return <-con.errorChan
 			}
 		case pushEv := <-con.pushChannel:
+		priority:
+			for {
+				select {
+				case req, ok := <-con.reqChan:
+					if ok {
+						if err := s.processRequest(req, con); err != nil {
+							return err
+						}
+					} else {
+						// Remote side closed connection or error processing the request.
+						return <-con.errorChan
+					}
+				default:
+					break priority
+				}
+			}
+
 			err := s.pushConnection(con, pushEv)
 			pushEv.done()
 			if err != nil {
