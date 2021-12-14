@@ -293,14 +293,18 @@ func (s *DiscoveryServer) Stream(stream DiscoveryStream) error {
 				// Remote side closed connection or error processing the request.
 				return <-con.errorChan
 			}
-		case pushEv := <-con.pushChannel:
-			err := s.pushConnection(con, pushEv)
-			pushEv.done()
-			if err != nil {
-				return err
+		default:
+			select {
+			case pushEv := <-con.pushChannel:
+				err := s.pushConnection(con, pushEv)
+				pushEv.done()
+				if err != nil {
+					return err
+				}
+			case <-con.stop:
+				return nil
+				// default:
 			}
-		case <-con.stop:
-			return nil
 		}
 	}
 }
@@ -424,7 +428,7 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 	// If there is mismatch in the nonce, that is a case of expired/stale nonce.
 	// A nonce becomes stale following a newer nonce being sent to Envoy.
 	if request.ResponseNonce != previousInfo.NonceSent {
-		log.Debugf("ADS:%s: REQ %s Expired nonce received %s, sent %s", stype,
+		log.Infof("ADS:%s: REQ %s Expired nonce received %s, sent %s", stype,
 			con.ConID, request.ResponseNonce, previousInfo.NonceSent)
 		xdsExpiredNonce.With(typeTag.Value(v3.GetMetricType(request.TypeUrl))).Increment()
 		previousInfo.NonceNacked = ""
@@ -445,7 +449,7 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 		return false
 	}
 	log.Debugf("ADS:%s: RESOURCE CHANGE previous resources: %v, new resources: %v %s %s %s", stype,
-		previousResources, request.ResourceNames, con.ConID, request.VersionInfo, request.ResponseNonce)
+		len(previousResources), len(request.ResourceNames), con.ConID, request.VersionInfo, request.ResponseNonce)
 
 	return true
 }
