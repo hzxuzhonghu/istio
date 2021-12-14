@@ -444,7 +444,7 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 		return false
 	}
 	log.Debugf("ADS:%s: RESOURCE CHANGE previous resources: %v, new resources: %v %s %s %s", stype,
-		previousResources, request.ResourceNames, con.ConID, request.VersionInfo, request.ResponseNonce)
+		len(previousResources), len(request.ResourceNames), con.ConID, request.VersionInfo, request.ResponseNonce)
 
 	return true
 }
