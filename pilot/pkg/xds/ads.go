@@ -191,7 +191,6 @@ func (s *DiscoveryServer) receive(con *Connection) {
 		}
 
 		shouldRespond, blockedPushRequest := s.preProcessRequest(req, con)
-		req = nil
 		if !shouldRespond && blockedPushRequest == nil {
 			continue
 		}
@@ -199,6 +198,7 @@ func (s *DiscoveryServer) receive(con *Connection) {
 			typeURL:     req.TypeUrl,
 			pushRequest: blockedPushRequest,
 		}
+		req = nil
 		select {
 		case con.reqChan <- request:
 		case <-con.stream.Context().Done():
