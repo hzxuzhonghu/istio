@@ -23,6 +23,7 @@ import (
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
+	"github.com/gogo/protobuf/proto"
 	uatomic "go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
@@ -182,7 +183,8 @@ func (s *DiscoveryServer) receive(con *Connection) {
 				return
 			}
 			// TODO: We should validate that the namespace in the cert matches the claimed namespace in metadata.
-			if err := s.initConnection(req.Node, con); err != nil {
+			node := proto.Clone(req.Node).(*core.Node)
+			if err := s.initConnection(node, con); err != nil {
 				con.errorChan <- err
 				return
 			}
@@ -455,12 +457,15 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 		return false
 	}
 
+	resourceNames := make([]string, 0, len(request.ResourceNames))
+	copy(resourceNames, request.ResourceNames)
+
 	// If it comes here, that means nonce match. This an ACK. We should record
 	// the ack details and respond if there is a change in resource names.
 	previousResources := previousInfo.ResourceNames
 	previousInfo.NonceAcked = request.ResponseNonce
 	previousInfo.NonceNacked = ""
-	previousInfo.ResourceNames = request.ResourceNames
+	previousInfo.ResourceNames = resourceNames
 
 	// Envoy can send two DiscoveryRequests with same version and nonce
 	// when it detects a new resource. We should respond if they change.
@@ -525,6 +530,7 @@ func listEqualUnordered(a []string, b []string) bool {
 // update the node associated with the connection, after receiving a packet from envoy, also adds the connection
 // to the tracking map.
 func (s *DiscoveryServer) initConnection(node *core.Node, con *Connection) error {
+	node = proto.Clone(node).(*core.Node)
 	// Setup the initial proxy metadata
 	proxy, err := s.initProxyMetadata(node)
 	if err != nil {
