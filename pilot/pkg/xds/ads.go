@@ -140,7 +140,7 @@ func newConnection(peerAddr string, stream DiscoveryStream) *Connection {
 		pushChannel:   make(chan *Event),
 		initialized:   make(chan struct{}),
 		stop:          make(chan struct{}),
-		reqChan:       make(chan Request, 4), // 4 kinds of most frequently requested xds[CDS,EDS,LDS,RDS]
+		reqChan:       make(chan Request, 1),
 		errorChan:     make(chan error, 1),
 		PeerAddr:      peerAddr,
 		Connect:       time.Now(),
@@ -191,14 +191,16 @@ func (s *DiscoveryServer) receive(con *Connection) {
 		}
 
 		shouldRespond, blockedPushRequest := s.preProcessRequest(req, con)
+		typeURL := req.TypeUrl
+		// explicitly remove reference to discoveryRequest
+		req = nil
 		if !shouldRespond && blockedPushRequest == nil {
 			continue
 		}
 		request := Request{
-			typeURL:     req.TypeUrl,
+			typeURL:     typeURL,
 			pushRequest: blockedPushRequest,
 		}
-		req = nil
 		select {
 		case con.reqChan <- request:
 		case <-con.stream.Context().Done():
