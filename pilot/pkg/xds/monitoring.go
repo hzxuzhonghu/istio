@@ -127,21 +127,21 @@ var (
 	pushTime = monitoring.NewDistribution(
 		"pilot_xds_push_time",
 		"Total time in seconds Pilot takes to push lds, rds, cds and eds.",
-		[]float64{.01, .1, 1, 3, 5, 10, 20, 30},
+		[]float64{.01, .1, 1, 3, 5, 10, 20, 30, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200, 240, 300, 360, 420, 480, 540, 600},
 		monitoring.WithLabels(typeTag),
 	)
 
 	sendTime = monitoring.NewDistribution(
 		"pilot_xds_send_time",
 		"Total time in seconds Pilot takes to send generated configuration.",
-		[]float64{.01, .1, 1, 3, 5, 10, 20, 30},
+		[]float64{.01, .1, 1, 3, 5, 10, 20, 30, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200, 240, 300, 360, 420, 480, 540, 600},
 	)
 
 	// only supported dimension is millis, unfortunately. default to unitdimensionless.
 	proxiesQueueTime = monitoring.NewDistribution(
 		"pilot_proxy_queue_time",
 		"Time in seconds, a proxy is in the push queue before being dequeued.",
-		[]float64{.1, .5, 1, 3, 5, 10, 20, 30},
+		[]float64{.1, 1, 3, 5, 10, 20, 30, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200, 240, 300, 360, 420, 480, 540, 600},
 	)
 
 	pushTriggers = monitoring.NewSum(
@@ -154,7 +154,7 @@ var (
 	proxiesConvergeDelay = monitoring.NewDistribution(
 		"pilot_proxy_convergence_time",
 		"Delay in seconds between config change and a proxy receiving all required configuration.",
-		[]float64{.1, .5, 1, 3, 5, 10, 20, 30},
+		[]float64{.1, .5, 1, 3, 5, 10, 20, 30, 40, 50, 60, 80, 100, 120, 140, 160, 180, 200, 240, 300, 360, 420, 480, 540, 600},
 	)
 
 	pushContextErrors = monitoring.NewSum(
