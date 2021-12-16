@@ -15,6 +15,7 @@
 package xds
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,7 +24,7 @@ import (
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
-	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/jsonpb"
 	uatomic "go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
@@ -183,7 +184,7 @@ func (s *DiscoveryServer) receive(con *Connection) {
 				return
 			}
 			// TODO: We should validate that the namespace in the cert matches the claimed namespace in metadata.
-			node := proto.Clone(req.Node).(*core.Node)
+			node := deepcopyNode(req.Node)
 			if err := s.initConnection(node, con); err != nil {
 				con.errorChan <- err
 				return
@@ -210,6 +211,14 @@ func (s *DiscoveryServer) receive(con *Connection) {
 			return
 		}
 	}
+}
+
+func deepcopyNode(node *core.Node) *core.Node {
+	out := &core.Node{}
+	buffer := &bytes.Buffer{}
+	_ := (&jsonpb.Marshaler{}).Marshal(buffer, node)
+	_ := (&jsonpb.Unmarshaler{}).Unmarshal(buffer, out)
+	return out
 }
 
 // StreamAggregatedResources implements the ADS interface.
@@ -534,7 +543,6 @@ func listEqualUnordered(a []string, b []string) bool {
 // update the node associated with the connection, after receiving a packet from envoy, also adds the connection
 // to the tracking map.
 func (s *DiscoveryServer) initConnection(node *core.Node, con *Connection) error {
-	node = proto.Clone(node).(*core.Node)
 	// Setup the initial proxy metadata
 	proxy, err := s.initProxyMetadata(node)
 	if err != nil {
