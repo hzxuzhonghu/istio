@@ -216,8 +216,8 @@ func (s *DiscoveryServer) receive(con *Connection) {
 func deepcopyNode(node *core.Node) *core.Node {
 	out := &core.Node{}
 	buffer := &bytes.Buffer{}
-	_ := (&jsonpb.Marshaler{}).Marshal(buffer, node)
-	_ := (&jsonpb.Unmarshaler{}).Unmarshal(buffer, out)
+	_ = (&jsonpb.Marshaler{}).Marshal(buffer, node)
+	_ = (&jsonpb.Unmarshaler{}).Unmarshal(buffer, out)
 	return out
 }
 
