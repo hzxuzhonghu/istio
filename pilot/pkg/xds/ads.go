@@ -422,7 +422,7 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 	// This is first request - initialize typeUrl watches.
 	if request.ResponseNonce == "" {
 		log.Debugf("ADS:%s: INIT %s %s %s", stype, con.ConID, request.VersionInfo, request.ResponseNonce)
-		resourceNames := make([]string, 0, len(request.ResourceNames))
+		resourceNames := make([]string, len(request.ResourceNames))
 		copy(resourceNames, request.ResourceNames)
 		con.proxy.Lock()
 		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: resourceNames, LastRequest: request}
@@ -440,7 +440,7 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 	// We should always respond with the current resource names.
 	if previousInfo == nil {
 		log.Debugf("ADS:%s: RECONNECT %s %s %s", stype, con.ConID, request.VersionInfo, request.ResponseNonce)
-		resourceNames := make([]string, 0, len(request.ResourceNames))
+		resourceNames := make([]string, len(request.ResourceNames))
 		copy(resourceNames, request.ResourceNames)
 		con.proxy.Lock()
 		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: resourceNames, LastRequest: request}
@@ -474,7 +474,7 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 		return false
 	}
 
-	resourceNames := make([]string, 0, len(request.ResourceNames))
+	resourceNames := make([]string, len(request.ResourceNames))
 	copy(resourceNames, request.ResourceNames)
 	previousInfo.ResourceNames = resourceNames
 	log.Debugf("ADS:%s: RESOURCE CHANGE previous resources: %v, new resources: %v %s %s %s", stype,
