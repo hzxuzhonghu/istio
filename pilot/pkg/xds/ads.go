@@ -422,8 +422,10 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 	// This is first request - initialize typeUrl watches.
 	if request.ResponseNonce == "" {
 		log.Debugf("ADS:%s: INIT %s %s %s", stype, con.ConID, request.VersionInfo, request.ResponseNonce)
+		resourceNames := make([]string, 0, len(request.ResourceNames))
+		copy(resourceNames, request.ResourceNames)
 		con.proxy.Lock()
-		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: request.ResourceNames, LastRequest: request}
+		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: resourceNames, LastRequest: request}
 		con.proxy.Unlock()
 		return true
 	}
@@ -438,8 +440,10 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 	// We should always respond with the current resource names.
 	if previousInfo == nil {
 		log.Debugf("ADS:%s: RECONNECT %s %s %s", stype, con.ConID, request.VersionInfo, request.ResponseNonce)
+		resourceNames := make([]string, 0, len(request.ResourceNames))
+		copy(resourceNames, request.ResourceNames)
 		con.proxy.Lock()
-		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: request.ResourceNames, LastRequest: request}
+		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: resourceNames, LastRequest: request}
 		con.proxy.Unlock()
 		return true
 	}
@@ -457,15 +461,11 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 		return false
 	}
 
-	resourceNames := make([]string, 0, len(request.ResourceNames))
-	copy(resourceNames, request.ResourceNames)
-
 	// If it comes here, that means nonce match. This an ACK. We should record
 	// the ack details and respond if there is a change in resource names.
 	previousResources := previousInfo.ResourceNames
 	previousInfo.NonceAcked = request.ResponseNonce
 	previousInfo.NonceNacked = ""
-	previousInfo.ResourceNames = resourceNames
 
 	// Envoy can send two DiscoveryRequests with same version and nonce
 	// when it detects a new resource. We should respond if they change.
@@ -473,6 +473,10 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 		log.Debugf("ADS:%s: ACK %s %s %s", stype, con.ConID, request.VersionInfo, request.ResponseNonce)
 		return false
 	}
+
+	resourceNames := make([]string, 0, len(request.ResourceNames))
+	copy(resourceNames, request.ResourceNames)
+	previousInfo.ResourceNames = resourceNames
 	log.Debugf("ADS:%s: RESOURCE CHANGE previous resources: %v, new resources: %v %s %s %s", stype,
 		len(previousResources), len(request.ResourceNames), con.ConID, request.VersionInfo, request.ResponseNonce)
 
