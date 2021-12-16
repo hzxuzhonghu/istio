@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"istio.io/istio/pkg/util/protomarshal"
 
 	"istio.io/istio/pilot/pkg/controller/workloadentry"
 	"istio.io/istio/pilot/pkg/features"
@@ -172,8 +173,10 @@ func (s *DiscoveryServer) receive(con *Connection) {
 				con.errorChan <- status.New(codes.InvalidArgument, "missing node information").Err()
 				return
 			}
+
+			node := deepcopyNode(req.Node)
 			// TODO: We should validate that the namespace in the cert matches the claimed namespace in metadata.
-			if err := s.initConnection(req.Node, con); err != nil {
+			if err := s.initConnection(node, con); err != nil {
 				con.errorChan <- err
 				return
 			}
@@ -188,6 +191,13 @@ func (s *DiscoveryServer) receive(con *Connection) {
 			return
 		}
 	}
+}
+
+func deepcopyNode(node *core.Node) *core.Node {
+	out := &core.Node{}
+	buffer, _ := protomarshal.MarshalProtoNames(node)
+	_ = protomarshal.Unmarshal(buffer, out)
+	return out
 }
 
 // processRequest is handling one request. This is currently called from the 'main' thread, which also
@@ -374,8 +384,10 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 	// This is first request - initialize typeUrl watches.
 	if request.ResponseNonce == "" {
 		log.Debugf("ADS:%s: INIT %s %s %s", stype, con.ConID, request.VersionInfo, request.ResponseNonce)
+		resources := make([]string, len(request.ResourceNames))
+		copy(resources, request.ResourceNames)
 		con.proxy.Lock()
-		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: request.ResourceNames, LastRequest: request}
+		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: resources, LastRequest: request}
 		con.proxy.Unlock()
 		return true
 	}
@@ -390,8 +402,10 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 	// We should always respond with the current resource names.
 	if previousInfo == nil {
 		log.Debugf("ADS:%s: RECONNECT %s %s %s", stype, con.ConID, request.VersionInfo, request.ResponseNonce)
+		resources := make([]string, len(request.ResourceNames))
+		copy(resources, request.ResourceNames)
 		con.proxy.Lock()
-		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: request.ResourceNames, LastRequest: request}
+		con.proxy.WatchedResources[request.TypeUrl] = &model.WatchedResource{TypeUrl: request.TypeUrl, ResourceNames: resources, LastRequest: request}
 		con.proxy.Unlock()
 		return true
 	}
@@ -416,7 +430,6 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 	con.proxy.WatchedResources[request.TypeUrl].VersionAcked = request.VersionInfo
 	con.proxy.WatchedResources[request.TypeUrl].NonceAcked = request.ResponseNonce
 	con.proxy.WatchedResources[request.TypeUrl].NonceNacked = ""
-	con.proxy.WatchedResources[request.TypeUrl].ResourceNames = request.ResourceNames
 	con.proxy.WatchedResources[request.TypeUrl].LastRequest = request
 	con.proxy.Unlock()
 
@@ -426,6 +439,12 @@ func (s *DiscoveryServer) shouldRespond(con *Connection, request *discovery.Disc
 		log.Debugf("ADS:%s: ACK %s %s %s", stype, con.ConID, request.VersionInfo, request.ResponseNonce)
 		return false
 	}
+	resources := make([]string, len(request.ResourceNames))
+	copy(resources, request.ResourceNames)
+	con.proxy.Lock()
+	con.proxy.WatchedResources[request.TypeUrl].ResourceNames = resources
+	con.proxy.Unlock()
+
 	log.Debugf("ADS:%s: RESOURCE CHANGE previous resources: %v, new resources: %v %s %s %s", stype,
 		previousResources, request.ResourceNames, con.ConID, request.VersionInfo, request.ResponseNonce)
 
