@@ -196,6 +196,9 @@ func (s *DiscoveryServer) receive(con *Connection) {
 		shouldRespond, blockedPushRequest := s.preProcessRequest(req, con)
 		typeURL := req.TypeUrl
 		// explicitly remove reference to discoveryRequest
+		req.Node = nil
+		req.ErrorDetail = nil
+		req.ResourceNames = nil
 		req = nil
 		if !shouldRespond && blockedPushRequest == nil {
 			continue
