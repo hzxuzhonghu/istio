@@ -379,6 +379,15 @@ func edsNeedsPush(updates model.XdsUpdates) bool {
 	return false
 }
 
+func allConfigsWithKind(configs map[model.ConfigKey]struct{}, kind string) bool {
+	for k := range configs {
+		if kind != k.Kind.Kind {
+			return false
+		}
+	}
+	return true
+}
+
 func (eds *EdsGenerator) Generate(proxy *model.Proxy, push *model.PushContext, w *model.WatchedResource,
 	req *model.PushRequest) (model.Resources, model.XdsLogDetails, error) {
 	if !edsNeedsPush(req.ConfigsUpdated) {
@@ -387,13 +396,29 @@ func (eds *EdsGenerator) Generate(proxy *model.Proxy, push *model.PushContext, w
 	var edsUpdatedServices map[string]struct{}
 	if !req.Full {
 		edsUpdatedServices = model.ConfigNamesOfKind(req.ConfigsUpdated, gvk.ServiceEntry)
+	} else if len(req.ConfigsUpdated) > 0 && allConfigsWithKind(req.ConfigsUpdated, gvk.ServiceEntry.Kind) {
+		// when full push
+		// if all configs updated are ServiceEntry type, then we only need to send eds for these updated services.
+		edsUpdatedServices = model.ConfigNamesOfKind(req.ConfigsUpdated, gvk.ServiceEntry)
 	}
 	resources := make(model.Resources, 0)
 	empty := 0
 
 	cached := 0
 	regenerated := 0
-	for _, clusterName := range w.GetResources() {
+
+	var filter []string
+	if edsUpdatedServices != nil {
+		for _, clusterName := range w.GetResources() {
+			_, _, hostname, _ := model.ParseSubsetKey(clusterName)
+			if _, ok := edsUpdatedServices[string(hostname)]; ok {
+				filter = append(filter, clusterName)
+			}
+		}
+	} else {
+		filter = w.ResourceNames
+	}
+	for _, clusterName := range filter {
 		if edsUpdatedServices != nil {
 			_, _, hostname, _ := model.ParseSubsetKey(clusterName)
 			if _, ok := edsUpdatedServices[string(hostname)]; !ok {
