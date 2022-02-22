@@ -80,62 +80,17 @@ func (configgen *ConfigGeneratorImpl) BuildClusters(proxy *model.Proxy, req *mod
 	return configgen.buildClusters(proxy, req, services)
 }
 
-// BuildDeltaClusters generates the deltas (add and delete) for a given proxy. Currently, only service changes are reflected with deltas.
-// Otherwise, we fall back onto generating everything.
-func (configgen *ConfigGeneratorImpl) BuildDeltaClusters(proxy *model.Proxy, updates *model.PushRequest,
+// BuildDeltaClusters generates the deltas (add and delete) for a given proxy.
+func (configgen *ConfigGeneratorImpl) BuildDeltaClusters(proxy *model.Proxy, req *model.PushRequest,
 	watched *model.WatchedResource) ([]*discovery.Resource, []string, model.XdsLogDetails, bool) {
-	// if we can't use delta, fall back to generate all
-	if !shouldUseDelta(updates) {
-		cl, lg := configgen.BuildClusters(proxy, updates)
-		return cl, nil, lg, false
+	// In Sotw, we care about all services.
+	var services []*model.Service
+	if features.FilterGatewayClusterConfig && proxy.Type == model.Router {
+		services = req.Push.GatewayServices(proxy)
+	} else {
+		services = proxy.SidecarScope.Services()
 	}
-
-	deletedClusters := make([]string, 0)
-	services := make([]*model.Service, 0)
-	// holds clusters per service, keyed by hostname.
-	serviceClusters := make(map[string]sets.Set)
-	// holds service ports, keyed by hostname.
-	// inner map holds port and its cluster name.
-	servicePorts := make(map[string]map[int]string)
-
-	for _, cluster := range watched.ResourceNames {
-		// WatchedResources.ResourceNames will contain the names of the clusters it is subscribed to. We can
-		// check with the name of our service (cluster names are in the format outbound|<port>||<hostname>.
-		_, _, svcHost, port := model.ParseSubsetKey(cluster)
-		if serviceClusters[string(svcHost)] == nil {
-			serviceClusters[string(svcHost)] = sets.NewSet()
-		}
-		serviceClusters[string(svcHost)].Insert(cluster)
-		if servicePorts[string(svcHost)] == nil {
-			servicePorts[string(svcHost)] = make(map[int]string)
-		}
-		servicePorts[string(svcHost)][port] = cluster
-	}
-
-	// In delta, we only care about the services that have changed.
-	for key := range updates.ConfigsUpdated {
-		// get the service that has changed.
-		service := updates.Push.ServiceForHostname(proxy, host.Name(key.Name))
-		// if this service removed, we can conclude that it is a removed cluster.
-		if service == nil {
-			for cluster := range serviceClusters[key.Name] {
-				deletedClusters = append(deletedClusters, cluster)
-			}
-		} else {
-			services = append(services, service)
-			// If servicePorts has this service, that means it is old service.
-			if servicePorts[service.Hostname.String()] != nil {
-				oldPorts := servicePorts[service.Hostname.String()]
-				for port, cluster := range oldPorts {
-					// if this service port is removed, we can conclude that it is a removed cluster.
-					if _, exists := service.Ports.GetByPort(port); !exists {
-						deletedClusters = append(deletedClusters, cluster)
-					}
-				}
-			}
-		}
-	}
-	clusters, log := configgen.buildClusters(proxy, updates, services)
+	clusters, deletedClusters, log := configgen.buildDeltaClusters(proxy, req, services, watched)
 	return clusters, deletedClusters, log, true
 }
 
@@ -152,7 +107,7 @@ func (configgen *ConfigGeneratorImpl) buildClusters(proxy *model.Proxy, req *mod
 	case model.SidecarProxy:
 		// Setup outbound clusters
 		outboundPatcher := clusterPatcher{efw: envoyFilterPatches, pctx: networking.EnvoyFilter_SIDECAR_OUTBOUND}
-		ob, cs := configgen.buildOutboundClusters(cb, proxy, outboundPatcher, services)
+		ob, _, cs := configgen.buildOutboundClusters(cb, proxy, outboundPatcher, services)
 		cacheStats = cacheStats.merge(cs)
 		resources = append(resources, ob...)
 		// Add a blackhole and passthrough cluster for catching traffic to unresolved routes
@@ -167,7 +122,7 @@ func (configgen *ConfigGeneratorImpl) buildClusters(proxy *model.Proxy, req *mod
 		clusters = append(clusters, inboundPatcher.insertedClusters()...)
 	default: // Gateways
 		patcher := clusterPatcher{efw: envoyFilterPatches, pctx: networking.EnvoyFilter_GATEWAY}
-		ob, cs := configgen.buildOutboundClusters(cb, proxy, patcher, services)
+		ob, _, cs := configgen.buildOutboundClusters(cb, proxy, patcher, services)
 		cacheStats = cacheStats.merge(cs)
 		resources = append(resources, ob...)
 		// Gateways do not require the default passthrough cluster as they do not have original dst listeners.
@@ -189,18 +144,62 @@ func (configgen *ConfigGeneratorImpl) buildClusters(proxy *model.Proxy, req *mod
 	return resources, model.XdsLogDetails{AdditionalInfo: fmt.Sprintf("cached:%v/%v", cacheStats.hits, cacheStats.hits+cacheStats.miss)}
 }
 
-func shouldUseDelta(updates *model.PushRequest) bool {
-	return updates != nil && deltaAwareConfigTypes(updates.ConfigsUpdated) && len(updates.ConfigsUpdated) > 0
-}
+// buildDeltaClusters builds clusters for the proxy with the services passed.
+func (configgen *ConfigGeneratorImpl) buildDeltaClusters(proxy *model.Proxy, req *model.PushRequest,
+	services []*model.Service, watched *model.WatchedResource) ([]*discovery.Resource, []string, model.XdsLogDetails) {
+	clusters := make([]*cluster.Cluster, 0)
+	cacheTokens := make([]model.CacheToken, 0)
+	resources := model.Resources{}
+	envoyFilterPatches := req.Push.EnvoyFilters(proxy)
+	cb := NewClusterBuilder(proxy, req, configgen.Cache)
+	instances := proxy.ServiceInstances
+	cacheStats := cacheStats{}
+	switch proxy.Type {
+	case model.SidecarProxy:
+		// Setup outbound clusters
+		outboundPatcher := clusterPatcher{efw: envoyFilterPatches, pctx: networking.EnvoyFilter_SIDECAR_OUTBOUND}
+		ob, tokens, cs := configgen.buildOutboundClusters(cb, proxy, outboundPatcher, services)
+		cacheTokens = tokens
+		cacheStats = cacheStats.merge(cs)
+		resources = append(resources, ob...)
+		// Add a blackhole and passthrough cluster for catching traffic to unresolved routes
+		clusters = outboundPatcher.conditionallyAppend(clusters, nil, cb.buildBlackHoleCluster(), cb.buildDefaultPassthroughCluster())
+		clusters = append(clusters, outboundPatcher.insertedClusters()...)
 
-// deltaAwareConfigTypes returns true if all updated configs are delta enabled.
-func deltaAwareConfigTypes(cfgs map[model.ConfigKey]struct{}) bool {
-	for k := range cfgs {
-		if !deltaConfigTypes.Contains(k.Kind.Kind) {
-			return false
+		// Setup inbound clusters
+		inboundPatcher := clusterPatcher{efw: envoyFilterPatches, pctx: networking.EnvoyFilter_SIDECAR_INBOUND}
+		clusters = append(clusters, configgen.buildInboundClusters(cb, proxy, instances, inboundPatcher)...)
+		// Pass through clusters for inbound traffic. These cluster bind loopback-ish src address to access node local service.
+		clusters = inboundPatcher.conditionallyAppend(clusters, nil, cb.buildInboundPassthroughClusters()...)
+		clusters = append(clusters, inboundPatcher.insertedClusters()...)
+	default: // Gateways
+		patcher := clusterPatcher{efw: envoyFilterPatches, pctx: networking.EnvoyFilter_GATEWAY}
+		ob, tokens, cs := configgen.buildOutboundClusters(cb, proxy, patcher, services)
+		cacheTokens = tokens
+		cacheStats = cacheStats.merge(cs)
+		resources = append(resources, ob...)
+		// Gateways do not require the default passthrough cluster as they do not have original dst listeners.
+		clusters = patcher.conditionallyAppend(clusters, nil, cb.buildBlackHoleCluster())
+		if proxy.Type == model.Router && proxy.MergedGateway != nil && proxy.MergedGateway.ContainsAutoPassthroughGateways {
+			clusters = append(clusters, configgen.buildOutboundSniDnatClusters(proxy, req, patcher)...)
+		}
+		clusters = append(clusters, patcher.insertedClusters()...)
+	}
+
+	// removed clusters is the watched resources minus generated.
+	removed := sets.NewSet(watched.ResourceNames...)
+	for i, c := range clusters {
+		removed.Delete(c.Name)
+		if i >= len(cacheTokens) || int64(cacheTokens[i]) >= cb.req.Start.UnixNano() {
+			resources = append(resources, &discovery.Resource{Name: c.Name, Resource: util.MessageToAny(c)})
 		}
 	}
-	return true
+	resources = cb.normalizeClusters(resources)
+
+	if cacheStats.empty() {
+		return resources, nil, model.DefaultXdsLogDetails
+	}
+	return resources, removed.SortedList(), model.XdsLogDetails{AdditionalInfo: fmt.Sprintf("cached:%v/%v", cacheStats.hits, cacheStats.hits+cacheStats.miss)}
 }
 
 type cacheStats struct {
@@ -241,9 +240,11 @@ func buildClusterKey(service *model.Service, port *model.Port, cb *ClusterBuilde
 }
 
 // buildOutboundClusters generates all outbound (including subsets) clusters for a given proxy.
+// tokens are used for delta cds
 func (configgen *ConfigGeneratorImpl) buildOutboundClusters(cb *ClusterBuilder, proxy *model.Proxy, cp clusterPatcher,
-	services []*model.Service) ([]*discovery.Resource, cacheStats) {
+	services []*model.Service) ([]*discovery.Resource, []model.CacheToken, cacheStats) {
 	resources := make([]*discovery.Resource, 0)
+	tokens := make([]model.CacheToken, 0)
 	efKeys := cp.efw.Keys()
 	hit, miss := 0, 0
 	for _, service := range services {
@@ -252,10 +253,11 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(cb *ClusterBuilder, 
 				continue
 			}
 			clusterKey := buildClusterKey(service, port, cb, proxy, efKeys)
-			cached, allFound := cb.getAllCachedSubsetClusters(*clusterKey)
+			cached, cachedTokens, allFound := cb.getAllCachedSubsetClusters(*clusterKey)
 			if allFound && !features.EnableUnsafeAssertions {
 				hit += len(cached)
 				resources = append(resources, cached...)
+				tokens = append(tokens, cachedTokens...)
 				continue
 			} else {
 				miss += len(cached)
@@ -281,6 +283,9 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(cb *ClusterBuilder, 
 
 			if patched := cp.applyResource(nil, defaultCluster.build()); patched != nil {
 				resources = append(resources, patched)
+				// for the new generated cluster, add token with current time,
+				// so it will be treated as updated xds.
+				tokens = append(tokens, model.CacheToken(cb.req.Start.UnixNano()))
 				if features.EnableCDSCaching {
 					cb.cache.Add(clusterKey, cb.req, patched)
 				}
@@ -290,6 +295,9 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(cb *ClusterBuilder, 
 					nk := *clusterKey
 					nk.clusterName = ss.Name
 					resources = append(resources, patched)
+					// for the new generated cluster, add token with current time,
+					// so it will be treated as updated xds.
+					tokens = append(tokens, model.CacheToken(cb.req.Start.UnixNano()))
 					if features.EnableCDSCaching {
 						cb.cache.Add(&nk, cb.req, patched)
 					}
@@ -298,7 +306,7 @@ func (configgen *ConfigGeneratorImpl) buildOutboundClusters(cb *ClusterBuilder, 
 		}
 	}
 
-	return resources, cacheStats{hits: hit, miss: miss}
+	return resources, tokens, cacheStats{hits: hit, miss: miss}
 }
 
 type clusterPatcher struct {
