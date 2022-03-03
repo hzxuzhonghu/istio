@@ -474,12 +474,13 @@ func (s *DiscoveryServer) pushDeltaXds(con *Connection, push *model.PushContext,
 	if len(resp.RemovedResources) > 0 {
 		deltaLog.Debugf("ADS:%v %s REMOVE %v", v3.GetShortType(w.TypeUrl), con.ConID, resp.RemovedResources)
 	}
-	// normally wildcard xds `subscribe` is always nil, just in case there are some extended type not handled correctly.
-	if subscribe == nil && isWildcardTypeURL(w.TypeUrl) {
+	// update subscribed resources for wildcard type.
+	if isWildcardTypeURL(w.TypeUrl) {
 		// this is probably a bad idea...
-		con.proxy.Lock()
-		w.ResourceNames = currentResources
-		con.proxy.Unlock()
+		subscribed := sets.NewSet(w.ResourceNames...)
+		subscribed.Insert(currentResources...)
+		subscribed.Delete(resp.RemovedResources...)
+		w.ResourceNames = subscribed.SortedList()
 	}
 
 	configSize := ResourceSize(res)

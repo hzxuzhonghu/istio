@@ -2535,7 +2535,7 @@ func TestBuildDeltaClusters(t *testing.T) {
 			watchedResourceNames: []string{"outbound|8080||test.com"},
 			usedDelta:            true,
 			removedClusters:      []string{},
-			expectedClusters:     []string{"BlackHoleCluster", "InboundPassthroughClusterIpv4", "PassthroughCluster", "outbound|8080||testnew.com"},
+			expectedClusters:     []string{"BlackHoleCluster", "InboundPassthroughClusterIpv4", "PassthroughCluster", "outbound|8080||test.com", "outbound|8080||testnew.com"},
 		},
 		{
 			name:                 "service is removed",
@@ -2556,12 +2556,15 @@ func TestBuildDeltaClusters(t *testing.T) {
 			expectedClusters:     []string{"BlackHoleCluster", "InboundPassthroughClusterIpv4", "PassthroughCluster", "outbound|8080||test.com"},
 		},
 		{
-			name:                 "config update that is not delta aware",
-			services:             []*model.Service{testService1, testService2},
-			configUpdated:        map[model.ConfigKey]struct{}{{Kind: gvk.DestinationRule, Name: "test.com", Namespace: TestServiceNamespace}: {}},
-			watchedResourceNames: []string{"outbound|7070||test.com"},
-			usedDelta:            false,
-			removedClusters:      nil,
+			name:          "destinationrule updated",
+			services:      []*model.Service{testService1, testService2},
+			configUpdated: map[model.ConfigKey]struct{}{{Kind: gvk.DestinationRule, Name: "test.com", Namespace: TestServiceNamespace}: {}},
+			watchedResourceNames: []string{
+				"BlackHoleCluster", "InboundPassthroughClusterIpv4", "PassthroughCluster",
+				"outbound|8080||test.com", "outbound|8080||testnew.com",
+			},
+			usedDelta:       true,
+			removedClusters: []string{},
 			expectedClusters: []string{
 				"BlackHoleCluster", "InboundPassthroughClusterIpv4", "PassthroughCluster",
 				"outbound|8080||test.com", "outbound|8080||testnew.com",

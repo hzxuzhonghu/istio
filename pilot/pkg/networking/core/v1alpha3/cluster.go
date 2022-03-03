@@ -154,14 +154,12 @@ func (configgen *ConfigGeneratorImpl) buildDeltaClusters(proxy *model.Proxy, req
 	cb := NewClusterBuilder(proxy, req, configgen.Cache)
 	instances := proxy.ServiceInstances
 	cacheStats := cacheStats{}
+	outboundResources := model.Resources{}
 	switch proxy.Type {
 	case model.SidecarProxy:
 		// Setup outbound clusters
 		outboundPatcher := clusterPatcher{efw: envoyFilterPatches, pctx: networking.EnvoyFilter_SIDECAR_OUTBOUND}
-		ob, tokens, cs := configgen.buildOutboundClusters(cb, proxy, outboundPatcher, services)
-		cacheTokens = tokens
-		cacheStats = cacheStats.merge(cs)
-		resources = append(resources, ob...)
+		outboundResources, cacheTokens, cacheStats = configgen.buildOutboundClusters(cb, proxy, outboundPatcher, services)
 		// Add a blackhole and passthrough cluster for catching traffic to unresolved routes
 		clusters = outboundPatcher.conditionallyAppend(clusters, nil, cb.buildBlackHoleCluster(), cb.buildDefaultPassthroughCluster())
 		clusters = append(clusters, outboundPatcher.insertedClusters()...)
@@ -174,10 +172,7 @@ func (configgen *ConfigGeneratorImpl) buildDeltaClusters(proxy *model.Proxy, req
 		clusters = append(clusters, inboundPatcher.insertedClusters()...)
 	default: // Gateways
 		patcher := clusterPatcher{efw: envoyFilterPatches, pctx: networking.EnvoyFilter_GATEWAY}
-		ob, tokens, cs := configgen.buildOutboundClusters(cb, proxy, patcher, services)
-		cacheTokens = tokens
-		cacheStats = cacheStats.merge(cs)
-		resources = append(resources, ob...)
+		outboundResources, cacheTokens, cacheStats = configgen.buildOutboundClusters(cb, proxy, patcher, services)
 		// Gateways do not require the default passthrough cluster as they do not have original dst listeners.
 		clusters = patcher.conditionallyAppend(clusters, nil, cb.buildBlackHoleCluster())
 		if proxy.Type == model.Router && proxy.MergedGateway != nil && proxy.MergedGateway.ContainsAutoPassthroughGateways {
@@ -188,16 +183,20 @@ func (configgen *ConfigGeneratorImpl) buildDeltaClusters(proxy *model.Proxy, req
 
 	// removed clusters is the watched resources minus generated.
 	removed := sets.NewSet(watched.ResourceNames...)
-	for i, c := range clusters {
+	for i, c := range outboundResources {
 		removed.Delete(c.Name)
 		if i >= len(cacheTokens) || int64(cacheTokens[i]) >= cb.req.Start.UnixNano() {
-			resources = append(resources, &discovery.Resource{Name: c.Name, Resource: util.MessageToAny(c)})
+			resources = append(resources, c)
 		}
+	}
+	for _, c := range clusters {
+		removed.Delete(c.Name)
+		resources = append(resources, &discovery.Resource{Name: c.Name, Resource: util.MessageToAny(c)})
 	}
 	resources = cb.normalizeClusters(resources)
 
 	if cacheStats.empty() {
-		return resources, nil, model.DefaultXdsLogDetails
+		return resources, removed.SortedList(), model.DefaultXdsLogDetails
 	}
 	return resources, removed.SortedList(), model.XdsLogDetails{AdditionalInfo: fmt.Sprintf("cached:%v/%v", cacheStats.hits, cacheStats.hits+cacheStats.miss)}
 }
