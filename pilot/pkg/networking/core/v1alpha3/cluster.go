@@ -143,13 +143,14 @@ func (configgen *ConfigGeneratorImpl) buildClusters(proxy *model.Proxy, req *mod
 func (configgen *ConfigGeneratorImpl) buildDeltaClusters(proxy *model.Proxy, req *model.PushRequest,
 	services []*model.Service, watched *model.WatchedResource) ([]*discovery.Resource, []string, model.XdsLogDetails) {
 	clusters := make([]*cluster.Cluster, 0)
-	cacheTokens := make([]model.CacheToken, 0)
 	resources := model.Resources{}
 	envoyFilterPatches := req.Push.EnvoyFilters(proxy)
 	cb := NewClusterBuilder(proxy, req, configgen.Cache)
 	instances := proxy.ServiceInstances
-	cacheStats := cacheStats{}
-	outboundResources := model.Resources{}
+	var outboundResources model.Resources
+	var cacheTokens []model.CacheToken
+	var cacheStats cacheStats
+
 	switch proxy.Type {
 	case model.SidecarProxy:
 		// Setup outbound clusters
