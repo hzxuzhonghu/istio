@@ -78,7 +78,8 @@ func (configgen *ConfigGeneratorImpl) BuildClusters(proxy *model.Proxy, req *mod
 // BuildDeltaClusters generates the deltas (add and delete) for a given proxy.
 func (configgen *ConfigGeneratorImpl) BuildDeltaClusters(proxy *model.Proxy, req *model.PushRequest,
 	watched *model.WatchedResource) ([]*discovery.Resource, []string, model.XdsLogDetails, bool) {
-	// In Sotw, we care about all services.
+	// In Delta xDS, build all clusters and compare with the xds cache to determine the delta updated/removed clusters.
+	// If cds cache disabled, it works as Stow.
 	var services []*model.Service
 	if features.FilterGatewayClusterConfig && proxy.Type == model.Router {
 		services = req.Push.GatewayServices(proxy)
