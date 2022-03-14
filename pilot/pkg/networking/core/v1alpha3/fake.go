@@ -88,6 +88,8 @@ type TestOptions struct {
 
 	// Used to set the serviceentry registry's cluster id
 	ClusterID cluster2.ID
+
+	xdsCache model.XdsCache
 }
 
 type ConfigGenTest struct {
@@ -174,6 +176,9 @@ func NewConfigGenTest(t test.Failer, opts TestOptions) *ConfigGenTest {
 		Registry:             serviceDiscovery,
 		ServiceEntryRegistry: se,
 		pushContextLock:      opts.PushContextLock,
+	}
+	if opts.xdsCache != nil {
+		fake.ConfigGen = NewConfigGenerator(opts.Plugins, opts.xdsCache)
 	}
 	if !opts.SkipRun {
 		fake.Run()
@@ -296,6 +301,32 @@ func (f *ConfigGenTest) Routes(p *model.Proxy) []*route.RouteConfiguration {
 		out = append(out, routeConfig)
 	}
 	return out
+}
+
+func (f *ConfigGenTest) DeltaRoutes(
+	p *model.Proxy,
+	configUpdated map[model.ConfigKey]struct{},
+	watched *model.WatchedResource,
+) ([]*route.RouteConfiguration, []string) {
+	resources, removed, _ := f.ConfigGen.BuildDeltaHTTPRoutes(p, &model.PushRequest{
+		Push:           f.PushContext(),
+		ConfigsUpdated: configUpdated,
+	}, watched.ResourceNames)
+	out := make([]*route.RouteConfiguration, 0, len(resources))
+	for _, resource := range resources {
+		routeConfig := &route.RouteConfiguration{}
+		_ = resource.Resource.UnmarshalTo(routeConfig)
+		out = append(out, routeConfig)
+	}
+	res := make([]*route.RouteConfiguration, 0, len(resources))
+	for _, r := range resources {
+		c := &route.RouteConfiguration{}
+		if err := r.Resource.UnmarshalTo(c); err != nil {
+			f.t.Fatal(err)
+		}
+		res = append(res, c)
+	}
+	return res, removed
 }
 
 func (f *ConfigGenTest) PushContext() *model.PushContext {

@@ -60,8 +60,8 @@ func (configgen *ConfigGeneratorImpl) BuildHTTPRoutes(
 		// dependent envoyfilters' key, calculate in front once to prevent calc for each route.
 		envoyfilterKeys := efw.Keys()
 		for _, routeName := range routeNames {
-			rc, cached := configgen.buildSidecarOutboundHTTPRouteConfig(node, req, routeName, vHostCache, efw, envoyfilterKeys)
-			if cached && !features.EnableUnsafeAssertions {
+			rc, token := configgen.buildSidecarOutboundHTTPRouteConfig(node, req, routeName, vHostCache, efw, envoyfilterKeys)
+			if token != 0 && !features.EnableUnsafeAssertions {
 				hit++
 			} else {
 				miss++
@@ -98,6 +98,58 @@ func (configgen *ConfigGeneratorImpl) BuildHTTPRoutes(
 	return routeConfigurations, model.XdsLogDetails{AdditionalInfo: fmt.Sprintf("cached:%v/%v", hit, hit+miss)}
 }
 
+// BuildDeltaHTTPRoutes returns updated and removed router configurations.
+func (configgen *ConfigGeneratorImpl) BuildDeltaHTTPRoutes(
+	node *model.Proxy,
+	req *model.PushRequest,
+	routeNames []string,
+) ([]*discovery.Resource, []string, model.XdsLogDetails) {
+	routeConfigurations := make([]*discovery.Resource, 0)
+	removed := make([]string, 0)
+	efw := req.Push.EnvoyFilters(node)
+	hit, miss := 0, 0
+	switch node.Type {
+	case model.SidecarProxy:
+		vHostCache := make(map[int][]*route.VirtualHost)
+		// dependent envoyfilters' key, calculate in front once to prevent calc for each route.
+		envoyfilterKeys := efw.Keys()
+		for _, routeName := range routeNames {
+			rc, token := configgen.buildSidecarOutboundHTTPRouteConfig(node, req, routeName, vHostCache, efw, envoyfilterKeys)
+			if token != 0 && !features.EnableUnsafeAssertions {
+				hit++
+			} else {
+				miss++
+			}
+			if rc == nil {
+				removed = append(removed, routeName)
+			} else {
+				// added or updated router cache token >= current time or not cached.
+				if int64(token) >= req.Start.UnixNano() || token == 0 {
+					routeConfigurations = append(routeConfigurations, rc)
+				}
+			}
+		}
+	case model.Router:
+		for _, routeName := range routeNames {
+			rc := configgen.buildGatewayHTTPRouteConfig(node, req.Push, routeName)
+			if rc != nil {
+				rc = envoyfilter.ApplyRouteConfigurationPatches(networking.EnvoyFilter_GATEWAY, node, efw, rc)
+				resource := &discovery.Resource{
+					Name:     routeName,
+					Resource: util.MessageToAny(rc),
+				}
+				routeConfigurations = append(routeConfigurations, resource)
+			} else {
+				removed = append(removed, routeName)
+			}
+		}
+	}
+	if !features.EnableRDSCaching {
+		return routeConfigurations, removed, model.DefaultXdsLogDetails
+	}
+	return routeConfigurations, removed, model.XdsLogDetails{AdditionalInfo: fmt.Sprintf("cached:%v/%v", hit, hit+miss)}
+}
+
 // buildSidecarInboundHTTPRouteConfig builds the route config with a single wildcard virtual host on the inbound path
 // TODO: trace decorators, inbound timeouts
 func (configgen *ConfigGeneratorImpl) buildSidecarInboundHTTPRouteConfig(
@@ -131,7 +183,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPRouteConfig(
 	vHostCache map[int][]*route.VirtualHost,
 	efw *model.EnvoyFilterWrapper,
 	efKeys []string,
-) (*discovery.Resource, bool) {
+) (*discovery.Resource, model.CacheToken) {
 	var virtualHosts []*route.VirtualHost
 	listenerPort := 0
 	useSniffing := false
@@ -155,12 +207,13 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPRouteConfig(
 			// user wants to ship a custom RDS. But at this point, the match semantics are murky. We have no
 			// object to match upon. This needs more thought. For now, we will continue to return nil for
 			// unknown routes
-			return nil, false
+			return nil, 0
 		}
 	}
 
 	var routeCache *istio_route.Cache
 	var resource *discovery.Resource
+	var token model.CacheToken
 
 	cacheHit := false
 	if useSniffing && listenerPort != 0 {
@@ -173,9 +226,9 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPRouteConfig(
 		}
 	}
 	if !cacheHit {
-		virtualHosts, resource, routeCache = BuildSidecarOutboundVirtualHosts(node, req.Push, routeName, listenerPort, efKeys, configgen.Cache)
+		virtualHosts, resource, routeCache, token = BuildSidecarOutboundVirtualHosts(node, req.Push, routeName, listenerPort, efKeys, configgen.Cache)
 		if resource != nil {
-			return resource, true
+			return resource, token
 		}
 		if listenerPort > 0 {
 			// only cache for tcp ports and not for uds
@@ -214,7 +267,7 @@ func (configgen *ConfigGeneratorImpl) buildSidecarOutboundHTTPRouteConfig(
 		configgen.Cache.Add(routeCache, req, resource)
 	}
 
-	return resource, false
+	return resource, token
 }
 
 // TODO: merge with IstioEgressListenerWrapper.selectVirtualServices
@@ -263,7 +316,7 @@ func BuildSidecarOutboundVirtualHosts(node *model.Proxy, push *model.PushContext
 	listenerPort int,
 	efKeys []string,
 	xdsCache model.XdsCache,
-) ([]*route.VirtualHost, *discovery.Resource, *istio_route.Cache) {
+) ([]*route.VirtualHost, *discovery.Resource, *istio_route.Cache, model.CacheToken) {
 	var virtualServices []config.Config
 	var services []*model.Service
 
@@ -276,7 +329,7 @@ func BuildSidecarOutboundVirtualHosts(node *model.Proxy, push *model.PushContext
 	// We should never be getting a nil egress listener because the code that setup this RDS
 	// call obviously saw an egress listener
 	if egressListener == nil {
-		return nil, nil, nil
+		return nil, nil, nil, 0
 	}
 
 	services = egressListener.Services()
@@ -350,9 +403,9 @@ func BuildSidecarOutboundVirtualHosts(node *model.Proxy, push *model.PushContext
 	// Get list of virtual services bound to the mesh gateway
 	virtualHostWrappers := istio_route.BuildSidecarVirtualHostWrapper(routeCache, node, push, servicesByName, virtualServices, listenerPort)
 
-	resource, _ := xdsCache.Get(routeCache)
+	resource, token := xdsCache.Get(routeCache)
 	if resource != nil && !features.EnableUnsafeAssertions {
-		return nil, resource, routeCache
+		return nil, resource, routeCache, token
 	}
 
 	vHostPortMap := make(map[int][]*route.VirtualHost)
@@ -439,7 +492,7 @@ func BuildSidecarOutboundVirtualHosts(node *model.Proxy, push *model.PushContext
 		out = vHostPortMap[listenerPort]
 	}
 
-	return out, nil, routeCache
+	return out, nil, routeCache, 0
 }
 
 // duplicateVirtualHost checks whether the virtual host with the same name exists in the route.

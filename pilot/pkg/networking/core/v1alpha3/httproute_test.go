@@ -21,6 +21,7 @@ import (
 	"time"
 
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	. "github.com/onsi/gomega"
 
 	meshapi "istio.io/api/mesh/v1alpha1"
 	networking "istio.io/api/networking/v1alpha3"
@@ -1484,6 +1485,61 @@ func TestSelectVirtualService(t *testing.T) {
 		if config.Name != expectedVS[i] {
 			t.Fatalf("Unexpected virtualService, got %s, epxected %s", config.Name, expectedVS[i])
 		}
+	}
+}
+
+func TestBuildDeltaHTTPRoutes(t *testing.T) {
+	g := NewWithT(t)
+	svc1 := buildHTTPService("bookinfo.com", visibility.Public, wildcardIP, TestServiceNamespace, 9999, 70)
+	svc2 := buildHTTPService("private.com", visibility.Private, wildcardIP, TestServiceNamespace, 9999, 80)
+
+	// TODO: Add more test cases.
+	testCases := []struct {
+		name                 string
+		services             []*model.Service
+		configUpdated        map[model.ConfigKey]struct{}
+		watchedResourceNames []string
+		removedRoutes        []string
+		expectedRoutes       []string
+	}{
+		{
+			name:     "service is added",
+			services: []*model.Service{svc1, svc2},
+			configUpdated: map[model.ConfigKey]struct{}{
+				{Kind: gvk.ServiceEntry, Name: "bookinfo.com", Namespace: TestServiceNamespace}: {},
+				{Kind: gvk.ServiceEntry, Name: "private.com", Namespace: TestServiceNamespace}:  {},
+			},
+			watchedResourceNames: []string{"9999", "70", "80"},
+			removedRoutes:        []string{},
+			expectedRoutes:       []string{"9999", "70", "80"},
+		},
+		{
+			name:                 "service is removed",
+			services:             []*model.Service{},
+			configUpdated:        map[model.ConfigKey]struct{}{{Kind: gvk.ServiceEntry, Name: "bookinfo.com", Namespace: TestServiceNamespace}: {}},
+			watchedResourceNames: []string{"9999", "70", "80"},
+			removedRoutes:        []string{"70"},
+			expectedRoutes:       []string{"9999"},
+		},
+	}
+
+	xdsCache := model.NewXdsCache()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			xdsCache.Clear(tc.configUpdated)
+			cg := NewConfigGenTest(t, TestOptions{
+				Services: tc.services,
+				xdsCache: xdsCache,
+			})
+			routes, removed := cg.DeltaRoutes(cg.SetupProxy(nil), tc.configUpdated,
+				&model.WatchedResource{ResourceNames: tc.watchedResourceNames})
+			g.Expect(removed).To(Equal(tc.removedRoutes))
+			keys := []string{}
+			for _, r := range routes {
+				keys = append(keys, r.Name)
+			}
+			g.Expect(keys).To(Equal(tc.expectedRoutes))
+		})
 	}
 }
 

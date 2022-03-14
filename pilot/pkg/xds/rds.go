@@ -59,11 +59,20 @@ func rdsNeedsPush(req *model.PushRequest) bool {
 	return false
 }
 
-func (c RdsGenerator) Generate(proxy *model.Proxy, push *model.PushContext, w *model.WatchedResource,
+func (g RdsGenerator) Generate(proxy *model.Proxy, push *model.PushContext, w *model.WatchedResource,
 	req *model.PushRequest) (model.Resources, model.XdsLogDetails, error) {
 	if !rdsNeedsPush(req) {
 		return nil, model.DefaultXdsLogDetails, nil
 	}
-	resources, logDetails := c.Server.ConfigGenerator.BuildHTTPRoutes(proxy, req, w.ResourceNames)
+	resources, logDetails := g.Server.ConfigGenerator.BuildHTTPRoutes(proxy, req, w.ResourceNames)
 	return resources, logDetails, nil
+}
+
+func (g RdsGenerator) GenerateDeltas(proxy *model.Proxy, push *model.PushContext, req *model.PushRequest,
+	w *model.WatchedResource) (model.Resources, model.DeletedResources, model.XdsLogDetails, bool, error) {
+	if !rdsNeedsPush(req) {
+		return nil, nil, model.DefaultXdsLogDetails, true, nil
+	}
+	updated, removed, logs := g.Server.ConfigGenerator.BuildDeltaHTTPRoutes(proxy, req, w.ResourceNames)
+	return updated, removed, logs, true, nil
 }
