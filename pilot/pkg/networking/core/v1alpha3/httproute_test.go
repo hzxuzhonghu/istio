@@ -1510,16 +1510,14 @@ func TestBuildDeltaHTTPRoutes(t *testing.T) {
 				{Kind: gvk.ServiceEntry, Name: "private.com", Namespace: TestServiceNamespace}:  {},
 			},
 			watchedResourceNames: []string{"9999", "70", "80"},
-			removedRoutes:        []string{},
 			expectedRoutes:       []string{"9999", "70", "80"},
 		},
 		{
 			name:                 "service is removed",
-			services:             []*model.Service{},
+			services:             []*model.Service{svc2},
 			configUpdated:        map[model.ConfigKey]struct{}{{Kind: gvk.ServiceEntry, Name: "bookinfo.com", Namespace: TestServiceNamespace}: {}},
 			watchedResourceNames: []string{"9999", "70", "80"},
-			removedRoutes:        []string{"70"},
-			expectedRoutes:       []string{"9999"},
+			expectedRoutes:       []string{"9999", "70"},
 		},
 	}
 

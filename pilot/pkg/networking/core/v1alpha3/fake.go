@@ -311,6 +311,7 @@ func (f *ConfigGenTest) DeltaRoutes(
 	resources, removed, _ := f.ConfigGen.BuildDeltaHTTPRoutes(p, &model.PushRequest{
 		Push:           f.PushContext(),
 		ConfigsUpdated: configUpdated,
+		Start:          time.Now(),
 	}, watched.ResourceNames)
 	out := make([]*route.RouteConfiguration, 0, len(resources))
 	for _, resource := range resources {
