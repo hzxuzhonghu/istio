@@ -15,6 +15,7 @@
 package platform
 
 import (
+	"fmt"
 	"time"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -53,11 +54,13 @@ type awsEnv struct {
 // NewAWS returns a platform environment customized for AWS.
 // Metadata returned by the AWS Environment is taken link-local address running on each node.
 func NewAWS(ipv6 bool) Environment {
-	return &awsEnv{
+	out := &awsEnv{
 		region:           getRegion(ipv6),
 		availabilityzone: getAvailabilityZone(ipv6),
 		instanceID:       getInstanceID(ipv6),
 	}
+	fmt.Printf("------%+v\n", out)
+	return out
 }
 
 func (a *awsEnv) Metadata() map[string]string {

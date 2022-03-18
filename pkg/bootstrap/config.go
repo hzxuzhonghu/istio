@@ -492,6 +492,9 @@ func extractAttributesMetadata(envVars []string, plat platform.Environment, meta
 			meta.ServiceAccount = val
 		}
 	}
+	if plat != nil {
+		fmt.Printf("------- %v\n", plat.Metadata())
+	}
 	if plat != nil && len(plat.Metadata()) > 0 {
 		meta.PlatformMetadata = plat.Metadata()
 	}
@@ -600,6 +603,7 @@ func GetNodeMetaData(options MetadataOptions) (*model.Node, error) {
 	if meta.Labels[model.LocalityLabel] == "" && options.Platform != nil {
 		// The locality string was not set, try to get locality from platform
 		l = options.Platform.Locality()
+		fmt.Printf("---------platform l;ocality %s\n", l)
 	} else {
 		localityString := model.GetLocalityLabelOrDefault(meta.Labels[model.LocalityLabel], "")
 		l = util.ConvertLocality(localityString)
