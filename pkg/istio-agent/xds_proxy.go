@@ -365,7 +365,7 @@ func (p *XdsProxy) handleUpstream(ctx context.Context, con *ProxyConnection, xds
 		return err
 	}
 	proxyLog.Infof("connected to upstream XDS server: %s", p.istiodAddress)
-	defer proxyLog.Debugf("disconnected from XDS server: %s", p.istiodAddress)
+	defer proxyLog.Infof("disconnected from XDS server: %s", p.istiodAddress)
 
 	con.upstream = upstream
 
