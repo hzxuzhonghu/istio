@@ -3,7 +3,11 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
+  {{- if eq .Release.Namespace "istio-system"}}
   name: istiod-default-validator
+  {{- else }}
+  name: istiod-default-validator-{{ .Release.Namespace }}
+  {{- end }}
   labels:
     app: istiod
     release: {{ .Release.Name }}
