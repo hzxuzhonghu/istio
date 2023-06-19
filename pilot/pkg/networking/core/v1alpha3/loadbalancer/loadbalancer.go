@@ -107,25 +107,20 @@ func applyLocalityWeight(
 	for _, localityWeightSetting := range distribute {
 		if localityWeightSetting != nil &&
 			util.LocalityMatch(locality, localityWeightSetting.From) {
-			misMatched := sets.Set[int]{}
-			for i := range loadAssignment.Endpoints {
-				misMatched.Insert(i)
-			}
+			matched := sets.Set[int]{}
 			for locality, weight := range localityWeightSetting.To {
 				// index -> original weight
 				destLocMap := map[int]uint32{}
 				totalWeight := uint32(0)
 				for i, ep := range loadAssignment.Endpoints {
-					if misMatched.Contains(i) {
-						if util.LocalityMatch(ep.Locality, locality) {
-							delete(misMatched, i)
-							if ep.LoadBalancingWeight != nil {
-								destLocMap[i] = ep.LoadBalancingWeight.Value
-							} else {
-								destLocMap[i] = 1
-							}
-							totalWeight += destLocMap[i]
+					if util.LocalityMatch(ep.Locality, locality) {
+						matched.Insert(i)
+						if ep.LoadBalancingWeight != nil {
+							destLocMap[i] = ep.LoadBalancingWeight.Value
+						} else {
+							destLocMap[i] = 1
 						}
+						totalWeight += destLocMap[i]
 					}
 				}
 				// in case wildcard dest matching multi groups of endpoints
@@ -139,14 +134,18 @@ func applyLocalityWeight(
 					}
 				}
 			}
-
+			if len(matched) == len(loadAssignment.Endpoints) {
+				return
+			}
 			// remove groups of endpoints in a locality that miss matched
-			for i := range misMatched {
-				if loadAssignment.Endpoints[i] != nil {
-					loadAssignment.Endpoints[i].LbEndpoints = nil
+			endpoints := make([]*endpoint.LocalityLbEndpoints, 0, len(matched))
+			for i, localityLbEps := range loadAssignment.Endpoints {
+				if matched.Contains(i) {
+					endpoints = append(endpoints, localityLbEps)
 				}
 			}
-			break
+			loadAssignment.Endpoints = endpoints
+			return
 		}
 	}
 }

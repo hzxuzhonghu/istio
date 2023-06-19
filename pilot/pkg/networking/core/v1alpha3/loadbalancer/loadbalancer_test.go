@@ -62,7 +62,7 @@ func TestApplyLocalitySetting(t *testing.T) {
 						},
 					},
 				},
-				expected: []int{40, 40, 15, 5, 0, 0, 0},
+				expected: []int{40, 40, 15, 5},
 			},
 		}
 		for _, tt := range tests {
