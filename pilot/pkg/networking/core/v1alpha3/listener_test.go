@@ -313,6 +313,63 @@ func TestOutboundListenerConfig_WithSidecar(t *testing.T) {
 	testOutboundListenerConfigWithSidecar(t, services...)
 }
 
+func TestOutboundListenerConflictWithStaticListener(t *testing.T) {
+	// Add a service and verify it's config
+	services := []*model.Service{
+		buildServiceWithPort("test1.com", 15021, protocol.HTTP, tnow.Add(1*time.Second)),
+		buildServiceWithPort("test2.com", 15090, protocol.TCP, tnow),
+		buildServiceWithPort("test3.com", 8080, protocol.HTTP, tnow.Add(2*time.Second)),
+	}
+
+	proxy := getProxy()
+	proxy.Metadata.EnvoyPrometheusPort = 15021
+	proxy.Metadata.EnvoyPrometheusPort = 15090
+
+	listeners := buildOutboundListeners(t, proxy, nil, nil, services...)
+	if len(listeners) != 1 {
+		t.Fatalf("expected %d listeners, found %d", 1, len(listeners))
+	}
+
+	l := findListenerByPort(listeners, 15021)
+	if l != nil {
+		t.Fatalf("got unexpected listener %d", l.Address.GetSocketAddress().GetPortValue())
+	}
+	l = findListenerByPort(listeners, 15090)
+	if l != nil {
+		t.Fatalf("got unexpected listener %d", l.Address.GetSocketAddress().GetPortValue())
+	}
+
+	sidecarConfig := &config.Config{
+		Meta: config.Meta{
+			Name:             "foo",
+			Namespace:        "not-default",
+			GroupVersionKind: gvk.Sidecar,
+		},
+		Spec: &networking.Sidecar{
+			Egress: []*networking.IstioEgressListener{
+				{
+					Port: &networking.Port{
+						Number:   15021,
+						Protocol: "GRPC",
+						Name:     "http",
+					},
+					Hosts: []string{"*/*"},
+				},
+			},
+		},
+	}
+
+	listeners = buildOutboundListeners(t, proxy, sidecarConfig, nil, services...)
+	if len(listeners) != 1 {
+		t.Fatalf("expected %d listeners, found %d", 1, len(listeners))
+	}
+
+	l = findListenerByPort(listeners, 15021)
+	if l != nil {
+		t.Fatalf("got unexpected listener %d", l.Address.GetSocketAddress().GetPortValue())
+	}
+}
+
 func TestOutboundListenerConflict_HTTPWithCurrentTCP(t *testing.T) {
 	// The oldest service port is TCP.  We should encounter conflicts when attempting to add the HTTP ports. Purposely
 	// storing the services out of time order to test that it's being sorted properly.
