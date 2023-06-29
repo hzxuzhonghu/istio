@@ -320,25 +320,7 @@ func TestOutboundListenerConflictWithStaticListener(t *testing.T) {
 		buildServiceWithPort("test2.com", 15090, protocol.TCP, tnow),
 		buildServiceWithPort("test3.com", 8080, protocol.HTTP, tnow.Add(2*time.Second)),
 	}
-
-	proxy := getProxy()
-	proxy.Metadata.EnvoyPrometheusPort = 15021
-	proxy.Metadata.EnvoyPrometheusPort = 15090
-
-	listeners := buildOutboundListeners(t, proxy, nil, nil, services...)
-	if len(listeners) != 1 {
-		t.Fatalf("expected %d listeners, found %d", 1, len(listeners))
-	}
-
-	l := findListenerByPort(listeners, 15021)
-	if l != nil {
-		t.Fatalf("got unexpected listener %d", l.Address.GetSocketAddress().GetPortValue())
-	}
-	l = findListenerByPort(listeners, 15090)
-	if l != nil {
-		t.Fatalf("got unexpected listener %d", l.Address.GetSocketAddress().GetPortValue())
-	}
-
+	// with sidecar
 	sidecarConfig := &config.Config{
 		Meta: config.Meta{
 			Name:             "foo",
@@ -358,15 +340,44 @@ func TestOutboundListenerConflictWithStaticListener(t *testing.T) {
 			},
 		},
 	}
-
-	listeners = buildOutboundListeners(t, proxy, sidecarConfig, nil, services...)
-	if len(listeners) != 1 {
-		t.Fatalf("expected %d listeners, found %d", 1, len(listeners))
+	testcases := []struct {
+		name             string
+		services         []*model.Service
+		sidecar          *config.Config
+		expectedListener []int
+	}{
+		{
+			name:             "service port conflict with proxy static listener",
+			services:         services,
+			sidecar:          nil,
+			expectedListener: []int{8080},
+		},
+		{
+			name:             "sidecar listener port conflict with proxy static listener",
+			services:         services,
+			sidecar:          sidecarConfig,
+			expectedListener: []int{},
+		},
 	}
 
-	l = findListenerByPort(listeners, 15021)
-	if l != nil {
-		t.Fatalf("got unexpected listener %d", l.Address.GetSocketAddress().GetPortValue())
+	proxy := getProxy()
+	proxy.Metadata.EnvoyStatusPort = 15021
+	proxy.Metadata.EnvoyPrometheusPort = 15090
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			listeners := buildOutboundListeners(t, proxy, nil, tc.sidecar, services...)
+			if len(listeners) != len(tc.expectedListener) {
+				t.Logf("listeners: %v", listeners[0].GetAddress().GetSocketAddress().GetPortValue())
+				t.Fatalf("expected %d listeners, found %d", len(tc.expectedListener), len(listeners))
+			}
+			for _, port := range tc.expectedListener {
+				l := findListenerByPort(listeners, uint32(port))
+				if l == nil {
+					t.Fatalf("found no listener with port %d", port)
+				}
+			}
+		})
 	}
 }
 
