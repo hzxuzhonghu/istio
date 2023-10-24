@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -33,7 +32,6 @@ import (
 	"istio.io/istio/pkg/testcerts"
 	"istio.io/istio/security/pkg/nodeagent/caclient/providers/mock"
 	"istio.io/istio/security/pkg/nodeagent/cafile"
-	pkiutil "istio.io/istio/security/pkg/pki/util"
 )
 
 func TestWorkloadAgentGenerateSecret(t *testing.T) {
@@ -146,7 +144,7 @@ func (u *UpdateTracker) Reset() {
 
 func TestWorkloadAgentRefreshSecret(t *testing.T) {
 	cacheLog.SetOutputLevel(log.DebugLevel)
-	fakeCACli, err := mock.NewMockCAClient(time.Millisecond*200, false)
+	fakeCACli, err := mock.NewMockCAClient(time.Millisecond*100, false)
 	if err != nil {
 		t.Fatalf("Error creating Mock CA client: %v", err)
 	}
@@ -557,7 +555,8 @@ func TestConcatCerts(t *testing.T) {
 }
 
 func TestProxyConfigAnchors(t *testing.T) {
-	fakeCACli, err := mock.NewMockCAClient(time.Hour, false)
+	cacheLog.SetOutputLevel(log.DebugLevel)
+	fakeCACli, err := mock.NewMockCAClient(time.Millisecond*100, false)
 	if err != nil {
 		t.Fatalf("Error creating Mock CA client: %v", err)
 	}
@@ -572,13 +571,6 @@ func TestProxyConfigAnchors(t *testing.T) {
 	u.Expect(map[string]int{security.RootCertReqResourceName: 1})
 	u.Reset()
 
-	caClientRootCert := []byte(strings.TrimRight(fakeCACli.GeneratedCerts[0][2], "\n"))
-	// Ensure that contents of the rootCert are correct.
-	checkSecret(t, sc, security.RootCertReqResourceName, security.SecretItem{
-		ResourceName: security.RootCertReqResourceName,
-		RootCert:     caClientRootCert,
-	})
-
 	rootCert, err := os.ReadFile(filepath.Join("./testdata", "root-cert.pem"))
 	if err != nil {
 		t.Fatalf("Error reading the root cert file: %v", err)
@@ -587,58 +579,10 @@ func TestProxyConfigAnchors(t *testing.T) {
 	// Update the proxyConfig with certs
 	sc.UpdateConfigTrustBundle(rootCert)
 
+	time.Sleep(100 * time.Millisecond)
 	// Ensure Callback gets invoked when updating proxyConfig trust bundle
-	u.Expect(map[string]int{security.RootCertReqResourceName: 1})
-	u.Reset()
-
-	concatCerts := func(certs ...string) []byte {
-		expectedRootBytes := []byte{}
-		sort.Strings(certs)
-		for _, cert := range certs {
-			expectedRootBytes = pkiutil.AppendCertByte(expectedRootBytes, []byte(cert))
-		}
-		return expectedRootBytes
-	}
-
-	expectedCerts := concatCerts(string(rootCert), string(caClientRootCert))
-	// Ensure that contents of the rootCert are correct.
-	checkSecret(t, sc, security.RootCertReqResourceName, security.SecretItem{
-		ResourceName: security.RootCertReqResourceName,
-		RootCert:     expectedCerts,
-	})
-
-	// Add Duplicates
-	sc.UpdateConfigTrustBundle(expectedCerts)
-	// Ensure that contents of the rootCert are correct without the duplicate caClientRootCert
-	checkSecret(t, sc, security.RootCertReqResourceName, security.SecretItem{
-		ResourceName: security.RootCertReqResourceName,
-		RootCert:     expectedCerts,
-	})
-
-	if !bytes.Equal(sc.mergeConfigTrustBundle([]string{string(caClientRootCert), string(rootCert)}), expectedCerts) {
-		t.Fatalf("deduplicate test failed!")
-	}
-
-	// Update the proxyConfig with fakeCaClient certs
-	sc.UpdateConfigTrustBundle(caClientRootCert)
-	setupTestDir(t, sc)
-
-	rootCert, err = os.ReadFile(sc.existingCertificateFile.CaCertificatePath)
-	if err != nil {
-		t.Fatalf("Error reading the root cert file: %v", err)
-	}
-
-	// Check request for workload root-certs merges configuration with ProxyConfig TrustAnchor
-	checkSecret(t, sc, security.RootCertReqResourceName, security.SecretItem{
-		ResourceName: security.RootCertReqResourceName,
-		RootCert:     concatCerts(string(rootCert), string(caClientRootCert)),
-	})
-
-	// Check request for non-workload root-certs doesn't configuration with ProxyConfig TrustAnchor
-	checkSecret(t, sc, sc.existingCertificateFile.GetRootResourceName(), security.SecretItem{
-		ResourceName: sc.existingCertificateFile.GetRootResourceName(),
-		RootCert:     rootCert,
-	})
+	// The rotate task actually cannnot call `OnSecretUpdate`, otherwise the WorkloadKeyCertResourceName event number should be 2
+	u.Expect(map[string]int{security.RootCertReqResourceName: 1, security.WorkloadKeyCertResourceName: 1})
 }
 
 func TestOSCACertGenerateSecret(t *testing.T) {

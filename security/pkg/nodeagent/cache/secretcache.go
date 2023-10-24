@@ -294,8 +294,6 @@ func (sc *SecretManagerClient) GenerateSecret(resourceName string) (secret *secu
 		cacheLog.Warnf("slow generate secret lock: %v", ts)
 	}
 
-	cacheLog.Debugf("------ generate new secret %q using caclient", resourceName)
-
 	// send request to CA to get new workload certificate
 	ns, err = sc.generateNewSecret(resourceName)
 	if err != nil {
@@ -306,8 +304,6 @@ func (sc *SecretManagerClient) GenerateSecret(resourceName string) (secret *secu
 	sc.registerSecret(*ns)
 
 	if resourceName == security.RootCertReqResourceName {
-		cacheLog.Debugf("------ ROOTCA  merging  TrustAnchor", resourceName)
-
 		ns.RootCert = sc.mergeTrustAnchorBytes(ns.RootCert)
 	} else {
 		// If periodic cert refresh resulted in discovery of a new root, trigger a ROOTCA request to refresh trust anchor
@@ -652,15 +648,16 @@ func (sc *SecretManagerClient) registerSecret(item security.SecretItem) {
 		return
 	}
 	sc.cache.SetWorkload(&item)
-	resourceLog(item.ResourceName).Debugf("scheduled certificate for rotation in %v", delay)
+	resourceLog(item.ResourceName).Infof("+++++++++scheduled certificate for rotation in %v", delay)
 	sc.queue.PushDelayed(func() error {
+		resourceLog(item.ResourceName).Infof("---- rotating certificate task")
 		// In case `UpdateConfigTrustBundle` called, it will resign workload cert.
 		// Check if this is a stale scheduled rotating task.
 		if cached := sc.cache.GetWorkload(); cached != nil {
 			if cached.CreatedTime == item.CreatedTime {
-				resourceLog(item.ResourceName).Debugf("rotating certificate")
 				// Clear the cache so the next call generates a fresh certificate
 				sc.cache.SetWorkload(nil)
+				fmt.Println("rotate OnSecretUpdate ", item.ResourceName)
 				sc.OnSecretUpdate(item.ResourceName)
 			}
 		}
@@ -760,6 +757,7 @@ func (sc *SecretManagerClient) UpdateConfigTrustBundle(trustBundle []byte) error
 	cacheLog.Debugf("update new trust bundle")
 	sc.OnSecretUpdate(security.RootCertReqResourceName)
 	sc.cache.SetWorkload(nil)
+	fmt.Println(" UpdateConfigTrustBundle OnSecretUpdate default---")
 	sc.OnSecretUpdate(security.WorkloadKeyCertResourceName)
 	return nil
 }

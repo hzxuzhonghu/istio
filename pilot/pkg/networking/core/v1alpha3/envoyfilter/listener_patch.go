@@ -740,7 +740,6 @@ func filterChainMatch(listener *listener.Listener, fc *listener.FilterChain, lp 
 			return false
 		}
 	}
-	fc.FilterChainMatch.ApplicationProtocols
 
 	// check match for destination port within the FilterChainMatch
 	if match.DestinationPort > 0 {
