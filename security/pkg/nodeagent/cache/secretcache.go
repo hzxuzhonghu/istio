@@ -271,6 +271,7 @@ func (sc *SecretManagerClient) GenerateSecret(resourceName string) (secret *secu
 		if err != nil {
 			return nil, err
 		}
+		cacheLog.Debugf("generate secret %q from file", resourceName)
 		return ns, nil
 	}
 
@@ -293,6 +294,8 @@ func (sc *SecretManagerClient) GenerateSecret(resourceName string) (secret *secu
 		cacheLog.Warnf("slow generate secret lock: %v", ts)
 	}
 
+	cacheLog.Debugf("------ generate new secret %q using caclient", resourceName)
+
 	// send request to CA to get new workload certificate
 	ns, err = sc.generateNewSecret(resourceName)
 	if err != nil {
@@ -303,6 +306,8 @@ func (sc *SecretManagerClient) GenerateSecret(resourceName string) (secret *secu
 	sc.registerSecret(*ns)
 
 	if resourceName == security.RootCertReqResourceName {
+		cacheLog.Debugf("------ ROOTCA  merging  TrustAnchor", resourceName)
+
 		ns.RootCert = sc.mergeTrustAnchorBytes(ns.RootCert)
 	} else {
 		// If periodic cert refresh resulted in discovery of a new root, trigger a ROOTCA request to refresh trust anchor
