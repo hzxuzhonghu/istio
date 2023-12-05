@@ -16,6 +16,7 @@ package serviceentry
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"reflect"
 	"sort"
@@ -41,6 +42,7 @@ import (
 	"istio.io/istio/pkg/test"
 	"istio.io/istio/pkg/test/util/assert"
 	"istio.io/istio/pkg/test/util/retry"
+	"istio.io/istio/pkg/util/sets"
 )
 
 func createConfigs(configs []*config.Config, store model.ConfigStore, t testing.TB) {
@@ -2010,6 +2012,32 @@ func Test_autoAllocateIP_values(t *testing.T) {
 		_, subnet, _ := net.ParseCIDR("240.240.0.0/16")
 		if !subnet.Contains(ip) {
 			t.Errorf("IP address not in range %s : %s", svc.AutoAllocatedIPv4Address, svc.Hostname.String())
+		}
+	}
+
+	// randomly remove some services
+	removed := rand.Intn(100)
+	removedIndex := make(sets.Set[int], removed)
+	for i := 0; i < removed; i++ {
+		removedIndex.Insert(rand.Intn(ips))
+	}
+	inServices = make([]*model.Service, 0, ips)
+	for i := 0; i < ips; i++ {
+		if removedIndex.Contains(i) {
+			continue
+		}
+		temp := model.Service{
+			Hostname:       host.Name(fmt.Sprintf("foo%d.com", i)),
+			Resolution:     model.ClientSideLB,
+			DefaultAddress: constants.UnspecifiedIP,
+		}
+		inServices = append(inServices, &temp)
+	}
+	gotServices2 := autoAllocateIPs(inServices)
+	for _, svc2 := range gotServices2 {
+		if gotIPMap[svc2.AutoAllocatedIPv4Address] != svc2.Hostname.String() {
+			t.Errorf("allocated ip: %s first time %s != second time %s",
+				svc2.AutoAllocatedIPv4Address, gotIPMap[svc2.AutoAllocatedIPv4Address], svc2.Hostname.String())
 		}
 	}
 }
