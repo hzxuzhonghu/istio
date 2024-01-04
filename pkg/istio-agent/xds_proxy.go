@@ -358,6 +358,8 @@ func (p *XdsProxy) buildUpstreamConn(ctx context.Context) (*grpc.ClientConn, err
 	return grpc.DialContext(ctx, p.istiodAddress, opts...)
 }
 
+var t0 = time.Now()
+
 func (p *XdsProxy) handleUpstream(ctx context.Context, con *ProxyConnection, xds discovery.AggregatedDiscoveryServiceClient) error {
 	upstream, err := xds.StreamAggregatedResources(ctx,
 		grpc.MaxCallRecvMsgSize(defaultClientMaxReceiveMessageSize))
@@ -373,18 +375,17 @@ func (p *XdsProxy) handleUpstream(ctx context.Context, con *ProxyConnection, xds
 
 	con.upstream = upstream
 
-	t0 := time.Now()
-
 	// Handle upstream xds recv
 	go func() {
 		for {
+			resp, err := con.upstream.Recv()
 			// 2 minutes let sidecar ready
 			if time.Since(t0) > 2*time.Minute {
 				// after sidecar ready, block forever here, to see whether connection closed.
+				proxyLog.Infof("sleep 1 hour........")
 				time.Sleep(1 * time.Hour)
 			}
 			// from istiod
-			resp, err := con.upstream.Recv()
 			if err != nil {
 				select {
 				case con.upstreamError <- err:
