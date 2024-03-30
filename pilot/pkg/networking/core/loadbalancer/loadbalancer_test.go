@@ -893,6 +893,19 @@ func buildEnvForClustersWithDistribute(distribute []*networking.LocalityLoadBala
 
 	configStore := memory.Make(collections.Pilot)
 
+	configStore.Create(config.Config{
+		Meta: config.Meta{
+			GroupVersionKind: gvk.DestinationRule,
+			Name:             "acme",
+		},
+		Spec: &networking.DestinationRule{
+			Host: "test.example.org",
+			TrafficPolicy: &networking.TrafficPolicy{
+				OutlierDetection: &networking.OutlierDetection{},
+			},
+		},
+	})
+
 	env := model.NewEnvironment()
 	env.ServiceDiscovery = serviceDiscovery
 	env.ConfigStore = configStore
@@ -902,20 +915,6 @@ func buildEnvForClustersWithDistribute(distribute []*networking.LocalityLoadBala
 	env.Init()
 	_ = pushContext.InitContext(env, nil, nil)
 	env.SetPushContext(pushContext)
-	pushContext.SetDestinationRulesForTesting([]config.Config{
-		{
-			Meta: config.Meta{
-				GroupVersionKind: gvk.DestinationRule,
-				Name:             "acme",
-			},
-			Spec: &networking.DestinationRule{
-				Host: "test.example.org",
-				TrafficPolicy: &networking.TrafficPolicy{
-					OutlierDetection: &networking.OutlierDetection{},
-				},
-			},
-		},
-	})
 
 	return env
 }
@@ -949,6 +948,18 @@ func buildEnvForClustersWithFailover() *model.Environment {
 	}
 
 	configStore := memory.Make(collections.Pilot)
+	configStore.Create(config.Config{
+		Meta: config.Meta{
+			GroupVersionKind: gvk.DestinationRule,
+			Name:             "acme",
+		},
+		Spec: &networking.DestinationRule{
+			Host: "test.example.org",
+			TrafficPolicy: &networking.TrafficPolicy{
+				OutlierDetection: &networking.OutlierDetection{},
+			},
+		},
+	})
 
 	env := model.NewEnvironment()
 	env.ServiceDiscovery = serviceDiscovery
@@ -959,20 +970,6 @@ func buildEnvForClustersWithFailover() *model.Environment {
 	env.Init()
 	_ = pushContext.InitContext(env, nil, nil)
 	env.SetPushContext(pushContext)
-	pushContext.SetDestinationRulesForTesting([]config.Config{
-		{
-			Meta: config.Meta{
-				GroupVersionKind: gvk.DestinationRule,
-				Name:             "acme",
-			},
-			Spec: &networking.DestinationRule{
-				Host: "test.example.org",
-				TrafficPolicy: &networking.TrafficPolicy{
-					OutlierDetection: &networking.OutlierDetection{},
-				},
-			},
-		},
-	})
 
 	return env
 }
@@ -1001,6 +998,18 @@ func buildEnvForClustersWithFailoverPriority(failoverPriority []string) *model.E
 	}
 
 	configStore := memory.Make(collections.Pilot)
+	configStore.Create(config.Config{
+		Meta: config.Meta{
+			GroupVersionKind: gvk.DestinationRule,
+			Name:             "acme",
+		},
+		Spec: &networking.DestinationRule{
+			Host: "test.example.org",
+			TrafficPolicy: &networking.TrafficPolicy{
+				OutlierDetection: &networking.OutlierDetection{},
+			},
+		},
+	})
 
 	env := model.NewEnvironment()
 	env.ServiceDiscovery = serviceDiscovery
@@ -1011,20 +1020,6 @@ func buildEnvForClustersWithFailoverPriority(failoverPriority []string) *model.E
 	env.Init()
 	_ = pushContext.InitContext(env, nil, nil)
 	env.SetPushContext(pushContext)
-	pushContext.SetDestinationRulesForTesting([]config.Config{
-		{
-			Meta: config.Meta{
-				GroupVersionKind: gvk.DestinationRule,
-				Name:             "acme",
-			},
-			Spec: &networking.DestinationRule{
-				Host: "test.example.org",
-				TrafficPolicy: &networking.TrafficPolicy{
-					OutlierDetection: &networking.OutlierDetection{},
-				},
-			},
-		},
-	})
 
 	return env
 }
@@ -1059,6 +1054,18 @@ func buildEnvForClustersWithMixedFailoverPriorityAndLocalityFailover(failoverPri
 	}
 
 	configStore := memory.Make(collections.Pilot)
+	configStore.Create(config.Config{
+		Meta: config.Meta{
+			GroupVersionKind: gvk.DestinationRule,
+			Name:             "acme",
+		},
+		Spec: &networking.DestinationRule{
+			Host: "test.example.org",
+			TrafficPolicy: &networking.TrafficPolicy{
+				OutlierDetection: &networking.OutlierDetection{},
+			},
+		},
+	})
 
 	env := model.NewEnvironment()
 	env.ServiceDiscovery = serviceDiscovery
@@ -1069,20 +1076,6 @@ func buildEnvForClustersWithMixedFailoverPriorityAndLocalityFailover(failoverPri
 	env.Init()
 	_ = pushContext.InitContext(env, nil, nil)
 	env.SetPushContext(pushContext)
-	pushContext.SetDestinationRulesForTesting([]config.Config{
-		{
-			Meta: config.Meta{
-				GroupVersionKind: gvk.DestinationRule,
-				Name:             "acme",
-			},
-			Spec: &networking.DestinationRule{
-				Host: "test.example.org",
-				TrafficPolicy: &networking.TrafficPolicy{
-					OutlierDetection: &networking.OutlierDetection{},
-				},
-			},
-		},
-	})
 
 	return env
 }

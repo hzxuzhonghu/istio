@@ -201,7 +201,7 @@ func (s *fakeDNSServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 					Hdr:  dns.RR_Header{Name: domain, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: s.ttl * 10},
 					AAAA: net.ParseIP(fmt.Sprintf("fd00::%x", c)),
 				})
-			// simulate behavior of some public/cloud DNS like Cloudflare or DigitalOcean
+			// simulate behavior of some Public/cloud DNS like Cloudflare or DigitalOcean
 			case dns.TypeANY:
 				msg.Rcode = dns.RcodeRefused
 			default:

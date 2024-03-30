@@ -296,9 +296,9 @@ func TestJwtPubKeyEvictionForNotUsed(t *testing.T) {
 	key := jwtKey{jwksURI: ms.URL + "/oauth2/v3/certs", issuer: "istio-test"}
 
 	retry.UntilSuccessOrFail(t, func() error {
-		// Verify the public key is evicted.
+		// Verify the Public key is evicted.
 		if _, found := r.keyEntries.Load(key); found {
-			return fmt.Errorf("public key is not evicted")
+			return fmt.Errorf("Public key is not evicted")
 		}
 		return nil
 	})
@@ -330,7 +330,7 @@ func TestJwtPubKeyEvictionForNotRefreshed(t *testing.T) {
 		t.Fatalf("GetPublicKey(\"\", %+v): expected (%s), got (%s)", mockCertURL, test.JwtPubKey1, pk)
 	}
 
-	// Keep getting the public key to change the lastUsedTime of the public key.
+	// Keep getting the Public key to change the lastUsedTime of the Public key.
 	done := make(chan struct{})
 	go func() {
 		c := time.NewTicker(10 * time.Millisecond)
@@ -348,7 +348,7 @@ func TestJwtPubKeyEvictionForNotRefreshed(t *testing.T) {
 		done <- struct{}{}
 	}()
 
-	// Verify the cached public key is removed after failed to refresh longer than the eviction duration.
+	// Verify the cached Public key is removed after failed to refresh longer than the eviction duration.
 	retry.UntilSuccessOrFail(t, func() error {
 		_, err = r.GetPublicKey(mockCertURL, "", testRequestTimeout)
 		if err == nil {
@@ -393,7 +393,7 @@ func TestJwtPubKeyRefreshWithNetworkError(t *testing.T) {
 	// Configures the mock server to return error after the first request.
 	ms.ReturnErrorAfterFirstNumHits = 1
 
-	// The refresh job should continue using the previously fetched public key (JwtPubKey1).
+	// The refresh job should continue using the previously fetched Public key (JwtPubKey1).
 	verifyKeyRefresh(t, r, ms, test.JwtPubKey1)
 
 	// The lastRefreshedTime should not change the refresh failed due to network error.
@@ -559,7 +559,7 @@ func verifyKeyLastRefreshedTime(t *testing.T, r *JwksResolver, ms *test.MockOpen
 
 	e, found := r.keyEntries.Load(key)
 	if !found {
-		t.Fatalf("No cached public key for %+v", key)
+		t.Fatalf("No cached Public key for %+v", key)
 	}
 	oldRefreshedTime := e.(jwtPubKeyEntry).lastRefreshedTime
 
@@ -567,7 +567,7 @@ func verifyKeyLastRefreshedTime(t *testing.T, r *JwksResolver, ms *test.MockOpen
 
 	e, found = r.keyEntries.Load(key)
 	if !found {
-		t.Fatalf("No cached public key for %+v", key)
+		t.Fatalf("No cached Public key for %+v", key)
 	}
 	newRefreshedTime := e.(jwtPubKeyEntry).lastRefreshedTime
 

@@ -675,13 +675,13 @@ func TestMergeVirtualServices(t *testing.T) {
 			defaultExportTo:         sets.New(visibility.Public),
 		},
 		{
-			name:                    "root not specify delegate namespace default public",
+			name:                    "root not specify delegate namespace default Public",
 			virtualServices:         []config.Config{defaultVs.DeepCopy(), delegateVsExportedToAll},
 			expectedVirtualServices: []config.Config{mergedVsInDefault},
 			defaultExportTo:         sets.New(visibility.Public),
 		},
 		{
-			name:                    "delegate not exported to root vs namespace default public",
+			name:                    "delegate not exported to root vs namespace default Public",
 			virtualServices:         []config.Config{rootVs, delegateVsNotExported},
 			expectedVirtualServices: []config.Config{oneRoot},
 			defaultExportTo:         sets.New(visibility.Public),

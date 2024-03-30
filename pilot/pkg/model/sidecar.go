@@ -125,7 +125,7 @@ func (hc hostClassification) VSMatches(vsHost host.Name, useGatewaySemantics boo
 // sidecar. Precomputing the list of services, virtual services, dest rules
 // for a sidecar improves performance as we no longer need to compute this
 // list for every sidecar. We simply have to match a sidecar to a
-// SidecarScope. Note that this is not the same as public/private scoped
+// SidecarScope. Note that this is not the same as Public/private scoped
 // services. The list of services seen by every sidecar scope (namespace
 // wide or per workload) depends on the imports, the listeners, and other
 // settings.
@@ -133,7 +133,7 @@ func (hc hostClassification) VSMatches(vsHost host.Name, useGatewaySemantics boo
 // Every proxy workload of SidecarProxy type will always map to a
 // SidecarScope object. If the proxy's namespace does not have a user
 // specified Sidecar CRD, we will construct one that has a catch all egress
-// listener that imports every public service/virtualService in the mesh.
+// listener that imports every Public service/virtualService in the mesh.
 type SidecarScope struct {
 	Name string
 	// This is the namespace where the sidecar takes effect,
@@ -159,7 +159,7 @@ type SidecarScope struct {
 	servicesByHostname map[host.Name]*Service
 
 	// Destination rules imported across all egress listeners. This
-	// contains the computed set based on public/private destination rules
+	// contains the computed set based on Public/private destination rules
 	// as well as the inherited ones, in addition to the wildcard matches
 	// such as *.com applying to foo.bar.com. Each hostname in this map
 	// corresponds to a service in the services array above. When computing
@@ -222,7 +222,7 @@ type IstioEgressListenerWrapper struct {
 	// service routing configs and the filter chain matches. We need a
 	// virtualService set per listener and not one per sidecarScope because
 	// each listener imports an independent set of virtual services.
-	// Listener 1 could import a public virtual service for serviceA from
+	// Listener 1 could import a Public virtual service for serviceA from
 	// namespace A that has some path rewrite, while listener2 could import
 	// a private virtual service for serviceA from the local namespace,
 	// with a different path rewrite or no path rewrites.

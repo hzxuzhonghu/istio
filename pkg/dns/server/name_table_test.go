@@ -194,34 +194,34 @@ func TestNameTable(t *testing.T) {
 
 	push := model.NewPushContext()
 	push.Mesh = mesh
-	push.AddPublicServices([]*model.Service{headlessService})
-	push.AddServiceInstances(headlessService,
+	AddPublicServices(push, []*model.Service{headlessService})
+	AddServiceInstances(push, headlessService,
 		makeServiceInstances(pod1, headlessService, "pod1", "headless-svc"))
-	push.AddServiceInstances(headlessService,
+	AddServiceInstances(push, headlessService,
 		makeServiceInstances(pod2, headlessService, "pod2", "headless-svc"))
-	push.AddServiceInstances(headlessService,
+	AddServiceInstances(push, headlessService,
 		makeServiceInstances(pod3, headlessService, "pod3", "headless-svc"))
-	push.AddServiceInstances(headlessService,
+	AddServiceInstances(push, headlessService,
 		makeServiceInstances(pod4, headlessService, "pod4", "headless-svc"))
 
 	wpush := model.NewPushContext()
 	wpush.Mesh = mesh
-	wpush.AddPublicServices([]*model.Service{wildcardService})
+	AddPublicServices(wpush, []*model.Service{wildcardService})
 
 	cpush := model.NewPushContext()
 	cpush.Mesh = mesh
-	cpush.AddPublicServices([]*model.Service{cidrService})
+	AddPublicServices(cpush, []*model.Service{cidrService})
 
 	sepush := model.NewPushContext()
 	sepush.Mesh = mesh
-	sepush.AddPublicServices([]*model.Service{headlessServiceForServiceEntry})
-	sepush.AddServiceInstances(headlessServiceForServiceEntry,
+	AddPublicServices(sepush, []*model.Service{headlessServiceForServiceEntry})
+	AddServiceInstances(sepush, headlessServiceForServiceEntry,
 		makeServiceInstances(pod1, headlessServiceForServiceEntry, "", ""))
-	sepush.AddServiceInstances(headlessServiceForServiceEntry,
+	AddServiceInstances(sepush, headlessServiceForServiceEntry,
 		makeServiceInstances(pod2, headlessServiceForServiceEntry, "", ""))
-	sepush.AddServiceInstances(headlessServiceForServiceEntry,
+	AddServiceInstances(sepush, headlessServiceForServiceEntry,
 		makeServiceInstances(pod3, headlessServiceForServiceEntry, "", ""))
-	sepush.AddServiceInstances(headlessServiceForServiceEntry,
+	AddServiceInstances(sepush, headlessServiceForServiceEntry,
 		makeServiceInstances(pod4, headlessServiceForServiceEntry, "", ""))
 
 	cases := []struct {
@@ -450,7 +450,7 @@ func TestNameTable(t *testing.T) {
 			push: func() *model.PushContext {
 				push := model.NewPushContext()
 				push.Mesh = mesh
-				push.AddPublicServices([]*model.Service{serviceWithVIP1, serviceWithVIP2})
+				AddPublicServices(push, []*model.Service{serviceWithVIP1, serviceWithVIP2})
 				return push
 			}(),
 			expectedNameTable: &dnsProto.NameTable{
@@ -468,7 +468,7 @@ func TestNameTable(t *testing.T) {
 			push: func() *model.PushContext {
 				push := model.NewPushContext()
 				push.Mesh = mesh
-				push.AddPublicServices([]*model.Service{serviceWithVIP1, decoratedService})
+				AddPublicServices(push, []*model.Service{serviceWithVIP1, decoratedService})
 				return push
 			}(),
 			expectedNameTable: &dnsProto.NameTable{
@@ -488,7 +488,7 @@ func TestNameTable(t *testing.T) {
 			push: func() *model.PushContext {
 				push := model.NewPushContext()
 				push.Mesh = mesh
-				push.AddPublicServices([]*model.Service{decoratedService, serviceWithVIP2})
+				AddPublicServices(push, []*model.Service{decoratedService, serviceWithVIP2})
 				return push
 			}(),
 			expectedNameTable: &dnsProto.NameTable{
@@ -530,4 +530,20 @@ func makeInstances(proxy *model.Proxy, svc *model.Service, servicePort int, targ
 		})
 	}
 	return ret
+}
+
+// AddServiceInstances adds instances to the context service instances
+func AddServiceInstances(ps *model.PushContext, service *model.Service, instances map[int][]*model.IstioEndpoint) {
+	svcKey := service.Key()
+	for port, inst := range instances {
+		if _, exists := ps.ServiceIndex.InstancesByPort[svcKey]; !exists {
+			ps.ServiceIndex.InstancesByPort[svcKey] = make(map[int][]*model.IstioEndpoint)
+		}
+		ps.ServiceIndex.InstancesByPort[svcKey][port] = append(ps.ServiceIndex.InstancesByPort[svcKey][port], inst...)
+	}
+}
+
+// AddPublicServices adds the services to context Public services
+func AddPublicServices(ps *model.PushContext, services []*model.Service) {
+	ps.ServiceIndex.Public = append(ps.ServiceIndex.Public, services...)
 }

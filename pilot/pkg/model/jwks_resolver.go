@@ -95,7 +95,7 @@ var (
 	jwksuriChannel = make(chan jwtKey, 5)
 )
 
-// jwtPubKeyEntry is a single cached entry for jwt public key and the http context options
+// jwtPubKeyEntry is a single cached entry for jwt Public key and the http context options
 type jwtPubKeyEntry struct {
 	pubKey string
 
@@ -115,12 +115,12 @@ type jwtKey struct {
 	issuer  string
 }
 
-// JwksResolver is resolver for jwksURI and jwt public key.
+// JwksResolver is resolver for jwksURI and jwt Public key.
 type JwksResolver struct {
-	// Callback function to invoke when detecting jwt public key change.
+	// Callback function to invoke when detecting jwt Public key change.
 	PushFunc func()
 
-	// cache for JWT public key.
+	// cache for JWT Public key.
 	// map key is jwtKey, map value is jwtPubKeyEntry.
 	keyEntries sync.Map
 
@@ -142,10 +142,10 @@ type JwksResolver struct {
 
 	retryInterval time.Duration
 
-	// How many times refresh job has detected JWT public key change happened, used in unit test.
+	// How many times refresh job has detected JWT Public key change happened, used in unit test.
 	refreshJobKeyChangedCount uint64
 
-	// How many times refresh job failed to fetch the public key from network, used in unit test.
+	// How many times refresh job failed to fetch the Public key from network, used in unit test.
 	refreshJobFetchFailedCount uint64
 
 	// Whenever istiod fails to fetch the pubkey from jwksuri in main flow this variable becomes true for background trigger
@@ -221,11 +221,11 @@ func newJwksResolverWithCABundlePaths(
 	return ret
 }
 
-var errEmptyPubKeyFoundInCache = errors.New("empty public key found in cache")
+var errEmptyPubKeyFoundInCache = errors.New("empty Public key found in cache")
 
-// GetPublicKey returns the JWT public key if it is available in the cache
+// GetPublicKey returns the JWT Public key if it is available in the cache
 // or fetch with from jwksuri if there is a error while fetching then it adds the
-// jwksURI in the cache to fetch the public key in the background process
+// jwksURI in the cache to fetch the Public key in the background process
 func (r *JwksResolver) GetPublicKey(issuer string, jwksURI string, timeout time.Duration) (string, error) {
 	now := time.Now()
 	key := jwtKey{issuer: issuer, jwksURI: jwksURI}
@@ -253,7 +253,7 @@ func (r *JwksResolver) GetPublicKey(issuer string, jwksURI string, timeout time.
 		var resp []byte
 		resp, err = r.getRemoteContentWithRetry(jwksURI, networkFetchRetryCountOnMainFlow, timeout)
 		if err != nil {
-			log.Errorf("Failed to fetch public key from %q: %v", jwksURI, err)
+			log.Errorf("Failed to fetch Public key from %q: %v", jwksURI, err)
 		}
 		pubKey = string(resp)
 	}
@@ -265,7 +265,7 @@ func (r *JwksResolver) GetPublicKey(issuer string, jwksURI string, timeout time.
 		timeout:           timeout,
 	})
 	if err != nil {
-		// fetching the public key in the background
+		// fetching the Public key in the background
 		jwksuriChannel <- key
 	}
 	return pubKey, err
@@ -357,7 +357,7 @@ func (r *JwksResolver) getRemoteContentWithRetry(uri string, retry int, timeout 
 	if strings.EqualFold(u.Scheme, "https") {
 		// https client may be uninitialized because of root CA bundle missing.
 		if r.secureHTTPClient == nil {
-			return nil, fmt.Errorf("pilot does not support fetch public key through https endpoint %q", uri)
+			return nil, fmt.Errorf("pilot does not support fetch Public key through https endpoint %q", uri)
 		}
 
 		client = r.secureHTTPClient
@@ -468,10 +468,10 @@ func (r *JwksResolver) refresh() bool {
 		// Remove cached item for either of the following 2 situations
 		// 1) it hasn't been used for a while
 		// 2) it hasn't been refreshed successfully for a while
-		// This makes sure 2 things, we don't grow the cache infinitely and also we don't reuse a cached public key
+		// This makes sure 2 things, we don't grow the cache infinitely and also we don't reuse a cached Public key
 		// with no success refresh for too much time.
 		if now.Sub(e.lastUsedTime) >= r.evictionDuration || now.Sub(e.lastRefreshedTime) >= r.evictionDuration {
-			log.Infof("Removed cached JWT public key (lastRefreshed: %s, lastUsed: %s) from %q",
+			log.Infof("Removed cached JWT Public key (lastRefreshed: %s, lastUsed: %s) from %q",
 				e.lastRefreshedTime, e.lastUsedTime, k.issuer)
 			r.keyEntries.Delete(k)
 			return true
@@ -500,7 +500,7 @@ func (r *JwksResolver) refresh() bool {
 			resp, err := r.getRemoteContentWithRetry(jwksURI, networkFetchRetryCountOnRefreshFlow, e.timeout)
 			if err != nil {
 				hasErrors.Store(true)
-				log.Errorf("Failed to refresh JWT public key from %q: %v", jwksURI, err)
+				log.Errorf("Failed to refresh JWT Public key from %q: %v", jwksURI, err)
 				atomic.AddUint64(&r.refreshJobFetchFailedCount, 1)
 				if oldPubKey == "" {
 					r.keyEntries.Delete(k)
@@ -517,12 +517,12 @@ func (r *JwksResolver) refresh() bool {
 			isNewKey, err := compareJWKSResponse(oldPubKey, newPubKey)
 			if err != nil {
 				hasErrors.Store(true)
-				log.Errorf("Failed to refresh JWT public key from %q: %v", jwksURI, err)
+				log.Errorf("Failed to refresh JWT Public key from %q: %v", jwksURI, err)
 				return
 			}
 			if isNewKey {
 				hasChange.Store(true)
-				log.Infof("Updated cached JWT public key from %q", jwksURI)
+				log.Infof("Updated cached JWT Public key from %q", jwksURI)
 			}
 		}()
 
@@ -534,7 +534,7 @@ func (r *JwksResolver) refresh() bool {
 
 	if hasChange.Load() {
 		atomic.AddUint64(&r.refreshJobKeyChangedCount, 1)
-		// Push public key changes to sidecars.
+		// Push Public key changes to sidecars.
 		if r.PushFunc != nil {
 			r.PushFunc()
 		}
@@ -559,11 +559,11 @@ func compareJWKSResponse(oldKeyString string, newKeyString string) (bool, error)
 	var newJWKs map[string]any
 	if err := json.Unmarshal([]byte(newKeyString), &newJWKs); err != nil {
 		// If the new key is not parseable as JSON return an error since we will not want to use this key
-		log.Warnf("New JWKs public key JSON is not parseable: %s", newKeyString)
+		log.Warnf("New JWKs Public key JSON is not parseable: %s", newKeyString)
 		return false, err
 	}
 	if err := json.Unmarshal([]byte(oldKeyString), &oldJWKs); err != nil {
-		log.Warnf("Previous JWKs public key JSON is not parseable: %s", oldKeyString)
+		log.Warnf("Previous JWKs Public key JSON is not parseable: %s", oldKeyString)
 		return true, nil
 	}
 

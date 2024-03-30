@@ -23,7 +23,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"go.uber.org/atomic"
 	"k8s.io/apimachinery/pkg/types"
@@ -34,7 +33,6 @@ import (
 	"istio.io/api/security/v1beta1"
 	"istio.io/istio/pilot/pkg/features"
 	"istio.io/istio/pilot/pkg/serviceregistry/provider"
-	"istio.io/istio/pkg/cluster"
 	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/constants"
 	"istio.io/istio/pkg/config/host"
@@ -52,20 +50,14 @@ import (
 	"istio.io/istio/pkg/workloadapi"
 )
 
-// Metrics is an interface for capturing metrics on a per-node basis.
-type Metrics interface {
-	// AddMetric will add an case to the metric for the given node.
-	AddMetric(metric monitoring.Metric, key string, proxyID, msg string)
-}
-
 var _ Metrics = &PushContext{}
 
 // serviceIndex is an index of all services by various fields for easy access during push.
 type serviceIndex struct {
 	// privateByNamespace are services that can reachable within the same namespace, with exportTo "."
 	privateByNamespace map[string][]*Service
-	// public are services reachable within the mesh with exportTo "*"
-	public []*Service
+	// Public are services reachable within the mesh with exportTo "*"
+	Public []*Service `json:"-"`
 	// exportedToNamespace are services that were made visible to this namespace
 	// by an exportTo explicitly specifying this namespace.
 	exportedToNamespace map[string][]*Service
@@ -73,19 +65,19 @@ type serviceIndex struct {
 	// HostnameAndNamespace has all services, indexed by hostname then namespace.
 	HostnameAndNamespace map[host.Name]map[string]*Service `json:"-"`
 
-	// instancesByPort contains a map of service key and instances by port. It is stored here
+	// InstancesByPort contains a map of service key and instances by port. It is stored here
 	// to avoid recomputations during push. This caches instanceByPort calls with empty labels.
 	// Call InstancesByPort directly when instances need to be filtered by actual labels.
-	instancesByPort map[string]map[int][]*IstioEndpoint
+	InstancesByPort map[string]map[int][]*IstioEndpoint `json:"-"`
 }
 
 func newServiceIndex() serviceIndex {
 	return serviceIndex{
-		public:               []*Service{},
+		Public:               []*Service{},
 		privateByNamespace:   map[string][]*Service{},
 		exportedToNamespace:  map[string][]*Service{},
 		HostnameAndNamespace: map[host.Name]map[string]*Service{},
-		instancesByPort:      map[string]map[int][]*IstioEndpoint{},
+		InstancesByPort:      map[string]map[int][]*IstioEndpoint{},
 	}
 }
 
@@ -130,7 +122,7 @@ func newVirtualServiceIndex() virtualServiceIndex {
 
 // destinationRuleIndex is the index of destination rules by various fields.
 type destinationRuleIndex struct {
-	//  namespaceLocal contains all public/private dest rules pertaining to a service defined in a given namespace.
+	//  namespaceLocal contains all Public/private dest rules pertaining to a service defined in a given namespace.
 	namespaceLocal map[string]*consolidatedDestRules
 	//  exportedByNamespace contains all dest rules pertaining to a service exported by a namespace.
 	exportedByNamespace map[string]*consolidatedDestRules
@@ -201,7 +193,7 @@ type serviceAccountKey struct {
 // PushContext tracks the status of a push - metrics and errors.
 // Metrics are reset after a push - at the beginning all
 // values are zero, and when push completes the status is reset.
-// The struct is exposed in a debug endpoint - fields public to allow
+// The struct is exposed in a debug endpoint - fields Public to allow
 // easy serialization as json.
 type PushContext struct {
 	proxyStatusMutex sync.RWMutex
@@ -213,7 +205,7 @@ type PushContext struct {
 	exportToDefaults exportToDefaults
 
 	// ServiceIndex is the index of services by various fields.
-	ServiceIndex serviceIndex
+	ServiceIndex serviceIndex `json:"-"`
 
 	// serviceAccounts contains a map of hostname and port to service accounts.
 	serviceAccounts map[serviceAccountKey][]string
@@ -298,87 +290,6 @@ type ConsolidatedDestRule struct {
 	rule *config.Config
 	// the original dest rules from which above rule is merged.
 	from []types.NamespacedName
-}
-
-// XDSUpdater is used for direct updates of the xDS model and incremental push.
-// Pilot uses multiple registries - for example each K8S cluster is a registry
-// instance. Each registry is responsible for tracking a set
-// of endpoints associated with mesh services, and calling the EDSUpdate on changes.
-// A registry may group endpoints for a service in smaller subsets - for example by
-// deployment, or to deal with very large number of endpoints for a service. We want
-// to avoid passing around large objects - like full list of endpoints for a registry,
-// or the full list of endpoints for a service across registries, since it limits
-// scalability.
-//
-// Future optimizations will include grouping the endpoints by labels, gateway or region to
-// reduce the time when subsetting or split-horizon is used. This design assumes pilot
-// tracks all endpoints in the mesh and they fit in RAM - so limit is few M endpoints.
-// It is possible to split the endpoint tracking in future.
-type XDSUpdater interface {
-	// EDSUpdate is called when the list of endpoints or labels in a Service is changed.
-	// For each cluster and hostname, the full list of active endpoints (including empty list)
-	// must be sent. The shard name is used as a key - current implementation is using the
-	// registry name.
-	EDSUpdate(shard ShardKey, hostname string, namespace string, entry []*IstioEndpoint)
-
-	// EDSCacheUpdate is called when the list of endpoints or labels in a Service is changed.
-	// For each cluster and hostname, the full list of active endpoints (including empty list)
-	// must be sent. The shard name is used as a key - current implementation is using the
-	// registry name.
-	// Note: the difference with `EDSUpdate` is that it only update the cache rather than requesting a push
-	EDSCacheUpdate(shard ShardKey, hostname string, namespace string, entry []*IstioEndpoint)
-
-	// SvcUpdate is called when a service definition is updated/deleted.
-	SvcUpdate(shard ShardKey, hostname string, namespace string, event Event)
-
-	// ConfigUpdate is called to notify the XDS server of config updates and request a push.
-	// The requests may be collapsed and throttled.
-	ConfigUpdate(req *PushRequest)
-
-	// ProxyUpdate is called to notify the XDS server to send a push to the specified proxy.
-	// The requests may be collapsed and throttled.
-	ProxyUpdate(clusterID cluster.ID, ip string)
-
-	// RemoveShard removes all endpoints for the given shard key
-	RemoveShard(shardKey ShardKey)
-}
-
-// PushRequest defines a request to push to proxies
-// It is used to send updates to the config update debouncer and pass to the PushQueue.
-type PushRequest struct {
-	// Full determines whether a full push is required or not. If false, an incremental update will be sent.
-	// Incremental pushes:
-	// * Do not recompute the push context
-	// * Do not recompute proxy state (such as ServiceInstances)
-	// * Are not reported in standard metrics such as push time
-	// As a result, configuration updates should never be incremental. Generally, only EDS will set this, but
-	// in the future SDS will as well.
-	Full bool
-
-	// ConfigsUpdated keeps track of configs that have changed.
-	// This is used as an optimization to avoid unnecessary pushes to proxies that are scoped with a Sidecar.
-	// If this is empty, then all proxies will get an update.
-	// Otherwise only proxies depend on these configs will get an update.
-	// The kind of resources are defined in pkg/config/schemas.
-	ConfigsUpdated sets.Set[ConfigKey]
-
-	// Push stores the push context to use for the update. This may initially be nil, as we will
-	// debounce changes before a PushContext is eventually created.
-	Push *PushContext
-
-	// Start represents the time a push was started. This represents the time of adding to the PushQueue.
-	// Note that this does not include time spent debouncing.
-	Start time.Time
-
-	// Reason represents the reason for requesting a push. This should only be a fixed set of values,
-	// to avoid unbounded cardinality in metrics. If this is not set, it may be automatically filled in later.
-	// There should only be multiple reasons if the push request is the result of two distinct triggers, rather than
-	// classifying a single trigger as having multiple reasons.
-	Reason ReasonStats
-
-	// Delta defines the resources that were added or removed as part of this push request.
-	// This is set only on requests from the client which change the set of resources they (un)subscribe from.
-	Delta ResourceDelta
 }
 
 // ResourceDelta records the difference in requested resources by an XDS client
@@ -474,104 +385,6 @@ const (
 	ClusterUpdate TriggerReason = "cluster"
 )
 
-// Merge two update requests together
-// Merge behaves similarly to a list append; usage should in the form `a = a.merge(b)`.
-// Importantly, Merge may decide to allocate a new PushRequest object or reuse the existing one - both
-// inputs should not be used after completion.
-func (pr *PushRequest) Merge(other *PushRequest) *PushRequest {
-	if pr == nil {
-		return other
-	}
-	if other == nil {
-		return pr
-	}
-
-	// Keep the first (older) start time
-
-	// Merge the two reasons. Note that we shouldn't deduplicate here, or we would under count
-	if len(other.Reason) > 0 {
-		if pr.Reason == nil {
-			pr.Reason = make(map[TriggerReason]int)
-		}
-		pr.Reason.Merge(other.Reason)
-	}
-
-	// If either is full we need a full push
-	pr.Full = pr.Full || other.Full
-
-	// The other push context is presumed to be later and more up to date
-	if other.Push != nil {
-		pr.Push = other.Push
-	}
-
-	// Do not merge when any one is empty
-	if len(pr.ConfigsUpdated) == 0 || len(other.ConfigsUpdated) == 0 {
-		pr.ConfigsUpdated = nil
-	} else {
-		for conf := range other.ConfigsUpdated {
-			pr.ConfigsUpdated.Insert(conf)
-		}
-	}
-
-	return pr
-}
-
-// CopyMerge two update requests together. Unlike Merge, this will not mutate either input.
-// This should be used when we are modifying a shared PushRequest (typically any time it's in the context
-// of a single proxy)
-func (pr *PushRequest) CopyMerge(other *PushRequest) *PushRequest {
-	if pr == nil {
-		return other
-	}
-	if other == nil {
-		return pr
-	}
-
-	var reason ReasonStats
-	if len(pr.Reason)+len(other.Reason) > 0 {
-		reason = make(ReasonStats)
-		reason.Merge(pr.Reason)
-		reason.Merge(other.Reason)
-	}
-	merged := &PushRequest{
-		// Keep the first (older) start time
-		Start: pr.Start,
-
-		// If either is full we need a full push
-		Full: pr.Full || other.Full,
-
-		// The other push context is presumed to be later and more up to date
-		Push: other.Push,
-
-		// Merge the two reasons. Note that we shouldn't deduplicate here, or we would under count
-		Reason: reason,
-	}
-
-	// Do not merge when any one is empty
-	if len(pr.ConfigsUpdated) > 0 && len(other.ConfigsUpdated) > 0 {
-		merged.ConfigsUpdated = make(sets.Set[ConfigKey], len(pr.ConfigsUpdated)+len(other.ConfigsUpdated))
-		merged.ConfigsUpdated.Merge(pr.ConfigsUpdated)
-		merged.ConfigsUpdated.Merge(other.ConfigsUpdated)
-	}
-
-	return merged
-}
-
-func (pr *PushRequest) IsRequest() bool {
-	return len(pr.Reason) == 1 && pr.Reason.Has(ProxyRequest)
-}
-
-func (pr *PushRequest) IsProxyUpdate() bool {
-	return pr.Reason.Has(ProxyUpdate)
-}
-
-func (pr *PushRequest) PushReason() string {
-	if pr.IsRequest() {
-		return " request"
-	}
-	return ""
-}
-
 // ProxyPushStatus represents an event captured during config push to proxies.
 // It may contain additional message and the affected proxy.
 type ProxyPushStatus struct {
@@ -598,104 +411,12 @@ func (ps *PushContext) AddMetric(metric monitoring.Metric, key string, proxyID, 
 }
 
 var (
-
-	// EndpointNoPod tracks endpoints without an associated pod. This is an error condition, since
-	// we can't figure out the labels. It may be a transient problem, if endpoint is processed before
-	// pod.
-	EndpointNoPod = monitoring.NewGauge(
-		"endpoint_no_pod",
-		"Endpoints without an associated pod.",
-	)
-
-	// ProxyStatusNoService represents proxies not selected by any service
-	// This can be normal - for workloads that act only as client, or are not covered by a Service.
-	// It can also be an error, for example in cases the Endpoint list of a service was not updated by the time
-	// the sidecar calls.
-	// Updated by GetProxyServiceTargets
-	ProxyStatusNoService = monitoring.NewGauge(
-		"pilot_no_ip",
-		"Pods not found in the endpoint table, possibly invalid.",
-	)
-
-	// ProxyStatusEndpointNotReady represents proxies found not be ready.
-	// Updated by GetProxyServiceTargets. Normal condition when starting
-	// an app with readiness, error if it doesn't change to 0.
-	ProxyStatusEndpointNotReady = monitoring.NewGauge(
-		"pilot_endpoint_not_ready",
-		"Endpoint found in unready state.",
-	)
-
-	// ProxyStatusConflictOutboundListenerTCPOverTCP metric tracks number of
-	// TCP listeners that conflicted with existing TCP listeners on same port
-	ProxyStatusConflictOutboundListenerTCPOverTCP = monitoring.NewGauge(
-		"pilot_conflict_outbound_listener_tcp_over_current_tcp",
-		"Number of conflicting tcp listeners with current tcp listener.",
-	)
-
-	// ProxyStatusConflictInboundListener tracks cases of multiple inbound
-	// listeners - 2 services selecting the same port of the pod.
-	ProxyStatusConflictInboundListener = monitoring.NewGauge(
-		"pilot_conflict_inbound_listener",
-		"Number of conflicting inbound listeners.",
-	)
-
-	// DuplicatedClusters tracks duplicate clusters seen while computing CDS
-	DuplicatedClusters = monitoring.NewGauge(
-		"pilot_duplicate_envoy_clusters",
-		"Duplicate envoy clusters caused by service entries with same hostname",
-	)
-
-	// DNSNoEndpointClusters tracks dns clusters without endpoints
-	DNSNoEndpointClusters = monitoring.NewGauge(
-		"pilot_dns_cluster_without_endpoints",
-		"DNS clusters without endpoints caused by the endpoint field in "+
-			"STRICT_DNS type cluster is not set or the corresponding subset cannot select any endpoint",
-	)
-
-	// ProxyStatusClusterNoInstances tracks clusters (services) without workloads.
-	ProxyStatusClusterNoInstances = monitoring.NewGauge(
-		"pilot_eds_no_instances",
-		"Number of clusters without instances.",
-	)
-
-	// DuplicatedDomains tracks rejected VirtualServices due to duplicated hostname.
-	DuplicatedDomains = monitoring.NewGauge(
-		"pilot_vservice_dup_domain",
-		"Virtual services with dup domains.",
-	)
-
-	// DuplicatedSubsets tracks duplicate subsets that we rejected while merging multiple destination rules for same host
-	DuplicatedSubsets = monitoring.NewGauge(
-		"pilot_destrule_subsets",
-		"Duplicate subsets across destination rules for same host",
-	)
-
-	// totalVirtualServices tracks the total number of virtual service
-	totalVirtualServices = monitoring.NewGauge(
-		"pilot_virt_services",
-		"Total virtual services known to pilot.",
-	)
-
 	// LastPushStatus preserves the metrics and data collected during lasts global push.
 	// It can be used by debugging tools to inspect the push event. It will be reset after each push with the
 	// new version.
 	LastPushStatus *PushContext
 	// LastPushMutex will protect the LastPushStatus
 	LastPushMutex sync.Mutex
-
-	// All metrics we registered.
-	metrics = []monitoring.Metric{
-		DNSNoEndpointClusters,
-		EndpointNoPod,
-		ProxyStatusNoService,
-		ProxyStatusEndpointNotReady,
-		ProxyStatusConflictOutboundListenerTCPOverTCP,
-		ProxyStatusConflictInboundListener,
-		DuplicatedClusters,
-		ProxyStatusClusterNoInstances,
-		DuplicatedDomains,
-		DuplicatedSubsets,
-	}
 )
 
 // NewPushContext creates a new PushContext structure to track push status.
@@ -709,22 +430,6 @@ func NewPushContext() *PushContext {
 		gatewayIndex:            newGatewayIndex(),
 		ProxyStatus:             map[string]map[string]ProxyPushStatus{},
 		serviceAccounts:         map[serviceAccountKey][]string{},
-	}
-}
-
-// AddPublicServices adds the services to context public services - mainly used in tests.
-func (ps *PushContext) AddPublicServices(services []*Service) {
-	ps.ServiceIndex.public = append(ps.ServiceIndex.public, services...)
-}
-
-// AddServiceInstances adds instances to the context service instances - mainly used in tests.
-func (ps *PushContext) AddServiceInstances(service *Service, instances map[int][]*IstioEndpoint) {
-	svcKey := service.Key()
-	for port, inst := range instances {
-		if _, exists := ps.ServiceIndex.instancesByPort[svcKey]; !exists {
-			ps.ServiceIndex.instancesByPort[svcKey] = make(map[int][]*IstioEndpoint)
-		}
-		ps.ServiceIndex.instancesByPort[svcKey][port] = append(ps.ServiceIndex.instancesByPort[svcKey][port], inst...)
 	}
 }
 
@@ -958,19 +663,19 @@ func (ps *PushContext) servicesExportedToNamespace(ns string) []*Service {
 
 	// First add private services and explicitly exportedTo services
 	if ns == NamespaceAll {
-		out = make([]*Service, 0, len(ps.ServiceIndex.privateByNamespace)+len(ps.ServiceIndex.public))
+		out = make([]*Service, 0, len(ps.ServiceIndex.privateByNamespace)+len(ps.ServiceIndex.Public))
 		for _, privateServices := range ps.ServiceIndex.privateByNamespace {
 			out = append(out, privateServices...)
 		}
 	} else {
 		out = make([]*Service, 0, len(ps.ServiceIndex.privateByNamespace[ns])+
-			len(ps.ServiceIndex.exportedToNamespace[ns])+len(ps.ServiceIndex.public))
+			len(ps.ServiceIndex.exportedToNamespace[ns])+len(ps.ServiceIndex.Public))
 		out = append(out, ps.ServiceIndex.privateByNamespace[ns]...)
 		out = append(out, ps.ServiceIndex.exportedToNamespace[ns]...)
 	}
 
-	// Second add public services
-	out = append(out, ps.ServiceIndex.public...)
+	// Second add Public services
+	out = append(out, ps.ServiceIndex.Public...)
 
 	return out
 }
@@ -1196,7 +901,7 @@ func (ps *PushContext) destinationRule(proxyNameSpace string, service *Service) 
 		}
 	}
 
-	// 3. if no private/public rule matched in the calling proxy's namespace,
+	// 3. if no private/Public rule matched in the calling proxy's namespace,
 	// check the target service's namespace for exported rules
 	if svcNs != "" {
 		if out := ps.getExportedDestinationRuleFromNamespace(svcNs, service.Hostname, proxyNameSpace); out != nil {
@@ -1204,7 +909,7 @@ func (ps *PushContext) destinationRule(proxyNameSpace string, service *Service) 
 		}
 	}
 
-	// 4. if no public/private rule in calling proxy's namespace matched, and no public rule in the
+	// 4. if no Public/private rule in calling proxy's namespace matched, and no Public rule in the
 	// target service's namespace matched, search for any exported destination rule in the config root namespace
 	if out := ps.getExportedDestinationRuleFromNamespace(ps.Mesh.RootNamespace, service.Hostname, proxyNameSpace); out != nil {
 		return out
@@ -1451,15 +1156,15 @@ func (ps *PushContext) initServiceRegistry(env *Environment, configsUpdate sets.
 		}
 
 		svcKey := s.Key()
-		if _, ok := ps.ServiceIndex.instancesByPort[svcKey]; !ok {
-			ps.ServiceIndex.instancesByPort[svcKey] = make(map[int][]*IstioEndpoint)
+		if _, ok := ps.ServiceIndex.InstancesByPort[svcKey]; !ok {
+			ps.ServiceIndex.InstancesByPort[svcKey] = make(map[int][]*IstioEndpoint)
 		}
 		shards, ok := env.EndpointIndex.ShardsForService(string(s.Hostname), s.Attributes.Namespace)
 		if ok {
 			instancesByPort := shards.CopyEndpoints(portMap)
 			// Iterate over the instances and add them to the service index to avoid overiding the existing port instances.
 			for port, instances := range instancesByPort {
-				ps.ServiceIndex.instancesByPort[svcKey][port] = instances
+				ps.ServiceIndex.InstancesByPort[svcKey][port] = instances
 			}
 		}
 		if _, f := ps.ServiceIndex.HostnameAndNamespace[s.Hostname]; !f {
@@ -1483,14 +1188,14 @@ func (ps *PushContext) initServiceRegistry(env *Environment, configsUpdate sets.
 			if ps.exportToDefaults.service.Contains(visibility.Private) {
 				ps.ServiceIndex.privateByNamespace[ns] = append(ps.ServiceIndex.privateByNamespace[ns], s)
 			} else if ps.exportToDefaults.service.Contains(visibility.Public) {
-				ps.ServiceIndex.public = append(ps.ServiceIndex.public, s)
+				ps.ServiceIndex.Public = append(ps.ServiceIndex.Public, s)
 			}
 		} else {
-			// if service has exportTo *, make it public and ignore all other exportTos.
+			// if service has exportTo *, make it Public and ignore all other exportTos.
 			// if service does not have exportTo *, but has exportTo ~ - i.e. not visible to anyone, ignore all exportTos.
 			// if service has exportTo ., replace with current namespace.
 			if s.Attributes.ExportTo.Contains(visibility.Public) {
-				ps.ServiceIndex.public = append(ps.ServiceIndex.public, s)
+				ps.ServiceIndex.Public = append(ps.ServiceIndex.Public, s)
 				continue
 			} else if s.Attributes.ExportTo.Contains(visibility.None) {
 				continue
@@ -1718,7 +1423,7 @@ func (ps *PushContext) initVirtualServices(env *Environment) {
 				exportToSet.Insert(visibility.Instance(e))
 			}
 			// if vs has exportTo ~ - i.e. not visible to anyone, ignore all exportTos
-			// if vs has exportTo *, make public and ignore all other exportTos
+			// if vs has exportTo *, make Public and ignore all other exportTos
 			// if vs has exportTo ., replace with current namespace
 			if exportToSet.Contains(visibility.Public) {
 				for _, gw := range gwNames {
@@ -1998,11 +1703,11 @@ func (ps *PushContext) setDestinationRules(configs []config.Config) {
 			exportToSet.Contains(visibility.Instance(configs[i].Namespace)) {
 			// Store in an index for the config's namespace
 			// a proxy from this namespace will first look here for the destination rule for a given service
-			// This pool consists of both public/private destination rules.
+			// This pool consists of both Public/private destination rules.
 			if _, exist := namespaceLocalDestRules[configs[i].Namespace]; !exist {
 				namespaceLocalDestRules[configs[i].Namespace] = newConsolidatedDestRules()
 			}
-			// Merge this destination rule with any public/private dest rules for same host in the same namespace
+			// Merge this destination rule with any Public/private dest rules for same host in the same namespace
 			// If there are no duplicates, the dest rule will be added to the list
 			ps.mergeDestinationRule(namespaceLocalDestRules[configs[i].Namespace], configs[i], exportToSet)
 		}
@@ -2379,7 +2084,7 @@ func (ps *PushContext) BestEffortInferServiceMTLSMode(tp *networking.TrafficPoli
 // ServiceEndpointsByPort returns the cached instances by port if it exists.
 func (ps *PushContext) ServiceEndpointsByPort(svc *Service, port int, labels labels.Instance) []*IstioEndpoint {
 	var out []*IstioEndpoint
-	if instances, exists := ps.ServiceIndex.instancesByPort[svc.Key()][port]; exists {
+	if instances, exists := ps.ServiceIndex.InstancesByPort[svc.Key()][port]; exists {
 		// Use cached version of instances by port when labels are empty.
 		if len(labels) == 0 {
 			return instances
@@ -2398,7 +2103,7 @@ func (ps *PushContext) ServiceEndpointsByPort(svc *Service, port int, labels lab
 
 // ServiceEndpoints returns the cached instances by svc if exists.
 func (ps *PushContext) ServiceEndpoints(svcKey string) map[int][]*IstioEndpoint {
-	if instances, exists := ps.ServiceIndex.instancesByPort[svcKey]; exists {
+	if instances, exists := ps.ServiceIndex.InstancesByPort[svcKey]; exists {
 		return instances
 	}
 

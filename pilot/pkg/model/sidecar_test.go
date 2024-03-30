@@ -1837,7 +1837,7 @@ func TestCreateSidecarScope(t *testing.T) {
 			nil,
 		},
 		{
-			"virtual-service-pick-public",
+			"virtual-service-pick-Public",
 			configs11,
 			// Ambiguous; same hostname in ns1 and ns2, neither is config namespace
 			// ns1 should always win
@@ -2466,7 +2466,7 @@ func TestCreateSidecarScope(t *testing.T) {
 			ps.Mesh = meshConfig
 			ps.setDestinationRules([]config.Config{destinationRule1, destinationRule2, destinationRule3, nonWorkloadSelectorDr})
 			if tt.services != nil {
-				ps.ServiceIndex.public = append(ps.ServiceIndex.public, tt.services...)
+				ps.ServiceIndex.Public = append(ps.ServiceIndex.Public, tt.services...)
 
 				for _, s := range tt.services {
 					if _, f := ps.ServiceIndex.HostnameAndNamespace[s.Hostname]; !f {
@@ -2798,7 +2798,7 @@ func TestContainsEgressDependencies(t *testing.T) {
 					},
 				},
 			}
-			ps.ServiceIndex.public = append(ps.ServiceIndex.public, services...)
+			ps.ServiceIndex.Public = append(ps.ServiceIndex.Public, services...)
 			// nolint lll
 			ps.virtualServiceIndex.publicByGateway[constants.IstioMeshGateway] = append(ps.virtualServiceIndex.publicByGateway[constants.IstioMeshGateway], virtualServices...)
 			ps.setDestinationRules(destinationRules)
@@ -3221,7 +3221,7 @@ func benchmarkConvertIstioListenerToWrapper(b *testing.B, vsNum int, hostNum int
 			Hostname:   host.Name("host-" + strconv.Itoa(i) + ".com"),
 		})
 	}
-	ps.ServiceIndex.public = svcList
+	ps.ServiceIndex.Public = svcList
 
 	hosts := make([]string, 0)
 	if matchAll {

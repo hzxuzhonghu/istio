@@ -1308,7 +1308,7 @@ func TestServiceIndex(t *testing.T) {
 				},
 			},
 			{
-				Hostname: "svc-public",
+				Hostname: "svc-Public",
 				Ports:    allPorts,
 				Attributes: ServiceAttributes{
 					Namespace: "test1",
@@ -1360,14 +1360,14 @@ func TestServiceIndex(t *testing.T) {
 	si := pc.ServiceIndex
 
 	// Should have all 5 services
-	g.Expect(si.instancesByPort).To(HaveLen(5))
+	g.Expect(si.InstancesByPort).To(HaveLen(5))
 	g.Expect(si.HostnameAndNamespace).To(HaveLen(5))
 
 	// Should just have "namespace"
 	g.Expect(si.exportedToNamespace).To(HaveLen(1))
 	g.Expect(serviceNames(si.exportedToNamespace["namespace"])).To(Equal([]string{"svc-namespace"}))
 
-	g.Expect(serviceNames(si.public)).To(Equal([]string{"svc-public", "svc-unset"}))
+	g.Expect(serviceNames(si.Public)).To(Equal([]string{"svc-Public", "svc-unset"}))
 
 	// Should just have "test1"
 	g.Expect(si.privateByNamespace).To(HaveLen(1))
@@ -1411,7 +1411,7 @@ func TestIsServiceVisible(t *testing.T) {
 			expect: false,
 		},
 		{
-			name: "service whose namespace is bar has no exportTo map with global public",
+			name: "service whose namespace is bar has no exportTo map with global Public",
 			pushContext: &PushContext{
 				exportToDefaults: exportToDefaults{
 					service: sets.New(visibility.Public),
@@ -1447,7 +1447,7 @@ func TestIsServiceVisible(t *testing.T) {
 			expect: false,
 		},
 		{
-			name:        "service whose namespace is bar has exportTo map with public",
+			name:        "service whose namespace is bar has exportTo map with Public",
 			pushContext: &PushContext{},
 			service: &Service{
 				Attributes: ServiceAttributes{
@@ -1491,7 +1491,7 @@ func TestIsServiceVisible(t *testing.T) {
 			expect: false,
 		},
 		{
-			name:        "service has both public visibility and none visibility",
+			name:        "service has both Public visibility and none visibility",
 			pushContext: &PushContext{},
 			service: &Service{
 				Attributes: ServiceAttributes{
@@ -2764,7 +2764,7 @@ func TestInitVirtualService(t *testing.T) {
 	public := config.Config{
 		Meta: config.Meta{
 			GroupVersionKind: gvk.VirtualService,
-			Name:             "public",
+			Name:             "Public",
 			Namespace:        "ns3",
 		},
 		Spec: &networking.VirtualService{
@@ -2775,7 +2775,7 @@ func TestInitVirtualService(t *testing.T) {
 					Route: []*networking.HTTPRouteDestination{
 						{
 							Destination: &networking.Destination{
-								Host: "public",
+								Host: "Public",
 								Port: &networking.PortSelector{
 									Number: 80,
 								},
@@ -2863,7 +2863,7 @@ func TestInitVirtualService(t *testing.T) {
 				}
 			}
 		}
-		if !reflect.DeepEqual(gotHTTPHosts, []string{"private.ns1", "public.ns3", "delegate.ns2"}) {
+		if !reflect.DeepEqual(gotHTTPHosts, []string{"private.ns1", "Public.ns3", "delegate.ns2"}) {
 			t.Errorf("got %+v", gotHTTPHosts)
 		}
 	})
@@ -2871,7 +2871,7 @@ func TestInitVirtualService(t *testing.T) {
 	t.Run("destinations by gateway", func(t *testing.T) {
 		got := ps.virtualServiceIndex.destinationsByGateway
 		want := map[string]sets.String{
-			gatewayName:   sets.New("delegate.ns2", "public.ns3", "private.ns1"),
+			gatewayName:   sets.New("delegate.ns2", "Public.ns3", "private.ns1"),
 			"ns5/gateway": sets.New("invisible.ns5"),
 		}
 		if !reflect.DeepEqual(got, want) {
@@ -3035,7 +3035,7 @@ func TestInstancesByPort(t *testing.T) {
 	}
 
 	ps.initServiceRegistry(env, nil)
-	instancesByPort := ps.ServiceIndex.instancesByPort[svc5_1.Key()]
+	instancesByPort := ps.ServiceIndex.InstancesByPort[svc5_1.Key()]
 	assert.Equal(t, len(instancesByPort), 2)
 }
 
@@ -3322,7 +3322,7 @@ func BenchmarkInitServiceAccounts(b *testing.B) {
 			},
 		},
 		{
-			Hostname: "svc-public",
+			Hostname: "svc-Public",
 			Ports:    allPorts,
 			Attributes: ServiceAttributes{
 				Namespace: "test1",
