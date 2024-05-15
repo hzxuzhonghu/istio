@@ -268,16 +268,16 @@ func GenerateService(cfg echo.Config) (string, error) {
 
 var VMImages = map[echo.VMDistro]string{
 	echo.UbuntuBionic: "app_sidecar_ubuntu_bionic",
-	echo.UbuntuJammy:  "app_sidecar_ubuntu_jammy",
-	echo.Debian11:     "app_sidecar_debian_11",
-	// echo.Rockylinux8:  "app_sidecar_rockylinux_8", TODO(https://github.com/istio/istio/issues/38224)
+	echo.UbuntuNoble:  "app_sidecar_ubuntu_noble",
+	echo.Debian12:     "app_sidecar_debian_12",
+	echo.Rockylinux9:  "app_sidecar_rockylinux_9",
 }
 
 // ArmVMImages is the subset of images that work on arm64. These fail because Istio's arm64 build has a higher GLIBC requirement
 var ArmVMImages = map[echo.VMDistro]string{
-	echo.UbuntuJammy: "app_sidecar_ubuntu_jammy",
-	echo.Debian11:    "app_sidecar_debian_11",
-	// echo.Rockylinux8:  "app_sidecar_rockylinux_8", TODO(https://github.com/istio/istio/issues/38224)
+	echo.UbuntuNoble: "app_sidecar_ubuntu_noble",
+	echo.Debian12:    "app_sidecar_debian_12",
+	echo.Rockylinux9: "app_sidecar_rockylinux_9",
 }
 
 var RevVMImages = func() map[string]echo.VMDistro {
@@ -361,7 +361,7 @@ func deploymentParams(ctx resource.Context, cfg echo.Config, settings *resource.
 			if subset.Labels == nil {
 				subset.Labels = make(map[string]string)
 			}
-			subset.Labels[constants.AmbientUseWaypoint] = cfg.WorkloadWaypointProxy
+			subset.Labels[constants.AmbientUseWaypointLabel] = cfg.WorkloadWaypointProxy
 		}
 	}
 
@@ -423,7 +423,7 @@ func serviceParams(cfg echo.Config) map[string]any {
 		if cfg.ServiceLabels == nil {
 			cfg.ServiceLabels = make(map[string]string)
 		}
-		cfg.ServiceLabels[constants.AmbientUseWaypoint] = cfg.ServiceWaypointProxy
+		cfg.ServiceLabels[constants.AmbientUseWaypointLabel] = cfg.ServiceWaypointProxy
 	}
 	return map[string]any{
 		"Service":        cfg.Service,
@@ -549,8 +549,8 @@ spec:
 
 		// support proxyConfig customizations on VMs via annotation in the echo API.
 		for k, v := range subset.Annotations {
-			if k.Name == "proxy.istio.io/config" {
-				if err := patchProxyConfigFile(path.Join(subsetDir, "mesh.yaml"), v.Value); err != nil {
+			if k == "proxy.istio.io/config" {
+				if err := patchProxyConfigFile(path.Join(subsetDir, "mesh.yaml"), v); err != nil {
 					return fmt.Errorf("failed patching proxyconfig: %v", err)
 				}
 			}

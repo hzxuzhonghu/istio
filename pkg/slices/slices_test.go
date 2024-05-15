@@ -787,7 +787,7 @@ func makeRandomStructs(n int) []*myStruct {
 const N = 100_000
 
 func BenchmarkSort(b *testing.B) {
-	b.Run("bool", func(b *testing.B) {
+	b.Run("SortFunc", func(b *testing.B) {
 		cmpFunc := func(a, b *myStruct) int { return a.n - b.n }
 		for i := 0; i < b.N; i++ {
 			b.StopTimer()
@@ -796,7 +796,16 @@ func BenchmarkSort(b *testing.B) {
 			SortFunc(ss, cmpFunc)
 		}
 	})
-	b.Run("by", func(b *testing.B) {
+	b.Run("SortStableFunc", func(b *testing.B) {
+		cmpFunc := func(a, b *myStruct) int { return a.n - b.n }
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			ss := makeRandomStructs(N)
+			b.StartTimer()
+			SortStableFunc(ss, cmpFunc)
+		}
+	})
+	b.Run("SortBy", func(b *testing.B) {
 		cmpFunc := func(a *myStruct) int { return a.n }
 		for i := 0; i < b.N; i++ {
 			b.StopTimer()
@@ -860,5 +869,51 @@ func BenchmarkEqualUnordered(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		EqualUnordered(l, equal)
 		EqualUnordered(l, notEqual)
+	}
+}
+
+func TestFilterDuplicates(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []string
+		out  []string
+	}{
+		{
+			name: "empty",
+			in:   nil,
+			out:  nil,
+		},
+		{
+			name: "one",
+			in:   []string{"a"},
+			out:  []string{"a"},
+		},
+		{
+			name: "no dupes",
+			in:   []string{"a", "b", "c", "d"},
+			out:  []string{"a", "b", "c", "d"},
+		},
+		{
+			name: "dupes first",
+			in:   []string{"a", "a", "c", "d"},
+			out:  []string{"a", "c", "d"},
+		},
+		{
+			name: "dupes last",
+			in:   []string{"a", "b", "c", "c"},
+			out:  []string{"a", "b", "c"},
+		},
+		{
+			name: "dupes middle",
+			in:   []string{"a", "b", "b", "c"},
+			out:  []string{"a", "b", "c"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FilterDuplicatesPresorted(tt.in)
+			assert.Equal(t, tt.out, got)
+			assert.Equal(t, tt.out, tt.in[:len(tt.out)])
+		})
 	}
 }

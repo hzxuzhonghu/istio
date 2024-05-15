@@ -285,6 +285,24 @@ func TestInjection(t *testing.T) {
 			want: "proxy-override-args.yaml.injected",
 		},
 		{
+			in:   "proxy-override-runas.yaml",
+			want: "proxy-override-runas.yaml.injected",
+		},
+		{
+			in:   "proxy-override-runas.yaml",
+			want: "proxy-override-runas.yaml.cni.injected",
+			setFlags: []string{
+				"components.cni.enabled=true",
+			},
+		},
+		{
+			in:   "proxy-override-runas.yaml",
+			want: "proxy-override-runas.yaml.tproxy.injected",
+			mesh: func(m *meshapi.MeshConfig) {
+				m.DefaultConfig.InterceptionMode = meshapi.ProxyConfig_TPROXY
+			},
+		},
+		{
 			in:   "proxy-override-args.yaml",
 			want: "proxy-override-args-native.yaml.injected",
 			setup: func(t test.Failer) {
@@ -356,6 +374,16 @@ func TestInjection(t *testing.T) {
 			skipInjection: true,
 			setup: func(t test.Failer) {
 				test.SetEnvForTest(t, platform.Platform.Name, platform.OpenShift)
+			},
+		},
+		{
+			// Validates localhost probes get injected correctly
+			in:   "hello-probes-localhost.yaml",
+			want: "hello-probes-localhost.yaml.injected",
+			mesh: func(m *meshapi.MeshConfig) {
+				m.InboundTrafficPolicy = &meshapi.MeshConfig_InboundTrafficPolicy{
+					Mode: meshapi.MeshConfig_InboundTrafficPolicy_LOCALHOST,
+				}
 			},
 		},
 	}

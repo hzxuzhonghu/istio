@@ -15,6 +15,7 @@
 package crdclient
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -23,10 +24,13 @@ import (
 	"go.uber.org/atomic"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/gateway-api/pkg/consts"
 
 	"istio.io/api/meta/v1alpha1"
 	"istio.io/api/networking/v1alpha3"
+	"istio.io/api/networking/v1beta1"
 	clientnetworkingv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	apiistioioapinetworkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pkg/config"
 	"istio.io/istio/pkg/config/schema/collection"
@@ -49,7 +53,13 @@ func makeClient(t *testing.T, schemas collection.Schemas, f kubetypes.DynamicObj
 		kube.SetObjectFilter(fake, f)
 	}
 	for _, s := range schemas.All() {
-		clienttest.MakeCRD(t, fake, s.GroupVersionResource())
+		var annotations map[string]string
+		if s.Group() == gvk.KubernetesGateway.Group {
+			annotations = map[string]string{
+				consts.BundleVersionAnnotation: consts.BundleVersion,
+			}
+		}
+		clienttest.MakeCRDWithAnnotations(t, fake, s.GroupVersionResource(), annotations)
 	}
 	stop := test.NewStop(t)
 	config := New(fake, Option{})
@@ -425,4 +435,17 @@ func TestClientSync(t *testing.T) {
 	kube.WaitForCacheSync("test", stop, c.HasSynced)
 	// This MUST have been called by the time HasSynced returns true
 	assert.Equal(t, events.Load(), 1)
+}
+
+func TestAlternativeVersions(t *testing.T) {
+	fake := kube.NewFakeClient()
+	fake.RunAndWait(test.NewStop(t))
+	vs := apiistioioapinetworkingv1beta1.VirtualService{
+		TypeMeta:   metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{Name: "oo"},
+		Spec:       v1beta1.VirtualService{Hosts: []string{"hello"}},
+		Status:     v1alpha1.IstioStatus{},
+	}
+	_, err := fake.Istio().NetworkingV1beta1().VirtualServices("test").Create(context.Background(), &vs, metav1.CreateOptions{})
+	assert.NoError(t, err)
 }

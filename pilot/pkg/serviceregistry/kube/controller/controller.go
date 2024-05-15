@@ -97,13 +97,6 @@ var (
 	)
 )
 
-func incrementEvent(kind, event string) {
-	if kind == "" || event == "" {
-		return
-	}
-	k8sEvents.With(typeTag.Value(kind), eventTag.Value(event)).Increment()
-}
-
 // Options stores the configurable attributes of a Controller.
 type Options struct {
 	SystemNamespace string
@@ -583,10 +576,16 @@ func registerHandlers[T controllers.ComparableObject](c *Controller,
 		}
 		return handler(prev, curr, event)
 	}
+	// Pre-build our metric types to avoid recompute them on each event
+	adds := k8sEvents.With(typeTag.Value(otype), eventTag.Value("add"))
+	updatesames := k8sEvents.With(typeTag.Value(otype), eventTag.Value("updatesame"))
+	updates := k8sEvents.With(typeTag.Value(otype), eventTag.Value("update"))
+	deletes := k8sEvents.With(typeTag.Value(otype), eventTag.Value("delete"))
+
 	informer.AddEventHandler(
 		controllers.EventHandler[T]{
 			AddFunc: func(obj T) {
-				incrementEvent(otype, "add")
+				adds.Increment()
 				c.queue.Push(func() error {
 					return wrappedHandler(ptr.Empty[T](), obj, model.EventAdd)
 				})
@@ -594,17 +593,17 @@ func registerHandlers[T controllers.ComparableObject](c *Controller,
 			UpdateFunc: func(old, cur T) {
 				if filter != nil {
 					if filter(old, cur) {
-						incrementEvent(otype, "updatesame")
+						updatesames.Increment()
 						return
 					}
 				}
-				incrementEvent(otype, "update")
+				updates.Increment()
 				c.queue.Push(func() error {
 					return wrappedHandler(old, cur, model.EventUpdate)
 				})
 			},
 			DeleteFunc: func(obj T) {
-				incrementEvent(otype, "delete")
+				deletes.Increment()
 				c.queue.Push(func() error {
 					return handler(ptr.Empty[T](), obj, model.EventDelete)
 				})
@@ -833,7 +832,7 @@ func (c *Controller) GetProxyServiceTargets(proxy *model.Proxy) []model.ServiceT
 		// with the same IP, choose one deterministically
 		workload := workloadinstances.GetInstanceForProxy(c.workloadInstancesIndex, proxy, proxyIP)
 		if workload != nil {
-			return c.serviceInstancesFromWorkloadInstance(workload)
+			return c.serviceTargetsFromWorkloadInstance(workload)
 		}
 		pod := c.pods.getPodByProxy(proxy)
 		if pod != nil && !proxy.IsVM() {
@@ -879,7 +878,7 @@ func (c *Controller) GetProxyServiceTargets(proxy *model.Proxy) []model.ServiceT
 	return nil
 }
 
-func (c *Controller) serviceInstancesFromWorkloadInstance(si *model.WorkloadInstance) []model.ServiceTarget {
+func (c *Controller) serviceTargetsFromWorkloadInstance(si *model.WorkloadInstance) []model.ServiceTarget {
 	out := make([]model.ServiceTarget, 0)
 	// find the workload entry's service by label selector
 	// rather than scanning through our internal map of model.services, get the services via the k8s apis

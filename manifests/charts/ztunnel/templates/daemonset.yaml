@@ -19,15 +19,22 @@ spec:
     metadata:
       labels:
         sidecar.istio.io/inject: "false"
+        istio.io/dataplane-mode: none
         app: ztunnel
 {{ with .Values.podLabels -}}{{ toYaml . | indent 8 }}{{ end }}
       annotations:
-        ambient.istio.io/redirection: disabled
         sidecar.istio.io/inject: "false"
 {{ with .Values.podAnnotations -}}{{ toYaml . | indent 8 }}{{ end }}
     spec:
       nodeSelector:
         kubernetes.io/os: linux
+{{- if .Values.nodeSelector }}
+{{ toYaml .Values.nodeSelector | indent 8 }}
+{{- end }}
+{{- if .Values.affinity }}
+      affinity:
+{{ toYaml .Values.affinity | trim | indent 8 }}
+{{- end }}
       serviceAccountName: ztunnel
       tolerations:
         - effect: NoSchedule

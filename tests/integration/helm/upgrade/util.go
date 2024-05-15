@@ -71,13 +71,16 @@ func upgradeCharts(ctx framework.TestContext, h *helm.Helm, overrideValuesFile s
 		ctx.Fatalf("failed to upgrade istio %s chart", helmtest.IstiodReleaseName)
 	}
 
-	if isAmbient {
+	if isAmbient || ctx.Settings().OpenShift {
 		// Upgrade istio-cni chart
 		err = h.UpgradeChart(helmtest.CniReleaseName, filepath.Join(helmtest.ManifestsChartPath, helmtest.CniChartsDir),
 			nsConfig.Get(helmtest.CniReleaseName), overrideValuesFile, helmtest.Timeout)
 		if err != nil {
 			ctx.Fatalf("failed to upgrade istio %s chart", helmtest.CniReleaseName)
 		}
+	}
+
+	if isAmbient {
 		// Upgrade ztunnel chart
 		err = h.UpgradeChart(helmtest.ZtunnelReleaseName, filepath.Join(helmtest.ManifestsChartPath, helmtest.ZtunnelChartsDir),
 			nsConfig.Get(helmtest.ZtunnelReleaseName), overrideValuesFile, helmtest.Timeout)
@@ -153,7 +156,7 @@ func performInPlaceUpgradeFunc(previousVersion string, isAmbient bool) func(fram
 		if isAmbient {
 			prevVariant = "debug"
 		}
-		overrideValuesFile := helmtest.GetValuesOverrides(t, gcrHub, previousVersion, prevVariant, "", isAmbient)
+		overrideValuesFile := helmtest.GetValuesOverrides(t, gcrHub, "", prevVariant, "", isAmbient)
 		helmtest.InstallIstio(t, cs, h, overrideValuesFile, previousVersion, true, isAmbient, nsConfig)
 		helmtest.VerifyInstallation(t, cs, nsConfig, true, isAmbient, "")
 
@@ -190,7 +193,7 @@ func performCanaryUpgradeFunc(nsConfig helmtest.NamespaceConfig, previousVersion
 		})
 
 		s := t.Settings()
-		overrideValuesFile := helmtest.GetValuesOverrides(t, gcrHub, previousVersion, s.Image.Variant, "", false)
+		overrideValuesFile := helmtest.GetValuesOverrides(t, gcrHub, "", s.Image.Variant, "", false)
 		helmtest.InstallIstio(t, cs, h, overrideValuesFile, previousVersion, false, false, helmtest.DefaultNamespaceConfig)
 		helmtest.VerifyInstallation(t, cs, helmtest.DefaultNamespaceConfig, false, false, "")
 
@@ -241,7 +244,7 @@ func performRevisionTagsUpgradeFunc(previousVersion string) func(framework.TestC
 		// helm install istio-base istio/base --version 1.15.0 --namespace istio-system -f values.yaml
 		// helm install istiod-1-15 istio/istiod --version 1.15.0 -f values.yaml
 		previousRevision := strings.ReplaceAll(previousVersion, ".", "-")
-		overrideValuesFile := helmtest.GetValuesOverrides(t, gcrHub, previousVersion, s.Image.Variant, previousRevision, false)
+		overrideValuesFile := helmtest.GetValuesOverrides(t, gcrHub, "", s.Image.Variant, previousRevision, false)
 		helmtest.InstallIstioWithRevision(t, cs, h, previousVersion, previousRevision, overrideValuesFile, false, true)
 		helmtest.VerifyInstallation(t, cs, helmtest.DefaultNamespaceConfig, false, false, "")
 

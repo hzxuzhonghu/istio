@@ -513,7 +513,11 @@
         "address": {
           "socket_address": {
             "protocol": "TCP",
+            {{- if .metrics_localhost_access_only }}
+            "address": "{{ .localhost }}",
+            {{ else }}
             "address": "{{ .wildcard }}",
+            {{ end }}
             "port_value": {{ .envoy_prometheus_port }}
           }
         },
@@ -523,7 +527,11 @@
             "address": {
               "socket_address": {
                 "protocol": "TCP",
+                {{- if .metrics_localhost_access_only }}
+                "address": "{{ .additional_localhost }}",
+                {{ else }}
                 "address": "{{ .additional_wildcard }}",
+                {{ end }}
                 "port_value": {{ .envoy_prometheus_port }}
               }
             }
@@ -812,9 +820,12 @@
     {{ end }}
   ]
   {{ end }}
-  {{ if or .outlier_log_path .load_stats_config_json_str }}
+  {{ if or .outlier_log_path .load_stats_config_json_str .deferred_cluster_creation}}
   ,
   "cluster_manager": {
+    {{- if .deferred_cluster_creation}}
+    "enable_deferred_cluster_creation": true,
+    {{- end}}
     {{- if .outlier_log_path}}
     "outlier_detection": {
       "event_log_path": "{{ .outlier_log_path }}"

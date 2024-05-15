@@ -257,7 +257,7 @@ func ignoreExists(err error) error {
 // in the 127.x.y.z range, while IPv6 defaults to `prefixlen 128` which allows binding only to ::1.
 // Equivalent to `ip -6 addr add "::6/128" dev lo`
 func configureIPv6Addresses(cfg *config.Config) error {
-	if !cfg.EnableInboundIPv6 {
+	if !cfg.EnableIPv6 {
 		return nil
 	}
 	link, err := netlink.LinkByName("lo")
@@ -292,7 +292,7 @@ func (cfg *IptablesConfigurator) Run() error {
 	defer func() {
 		// Best effort since we don't know if the commands exist
 		_ = cfg.ext.Run(constants.IPTablesSave, &iptVer, nil)
-		if cfg.cfg.EnableInboundIPv6 {
+		if cfg.cfg.EnableIPv6 {
 			_ = cfg.ext.Run(constants.IPTablesSave, &ipt6Ver, nil)
 		}
 	}()
@@ -349,7 +349,7 @@ func (cfg *IptablesConfigurator) Run() error {
 
 	// TODO: change the default behavior to not intercept any output - user may use http_proxy or another
 	// iptablesOrFail wrapper (like ufw). Current default is similar with 0.1
-	// Jump to the ISTIOOUTPUT chain from OUTPUT chain for all tcp traffic, and UDP dns (if enabled)
+	// Jump to the ISTIOOUTPUT chain from OUTPUT chain for all tcp traffic
 	cfg.ruleBuilder.AppendRule(iptableslog.JumpOutbound, constants.OUTPUT, constants.NAT, "-p", constants.TCP, "-j", constants.ISTIOOUTPUT)
 	// Apply port based exclusions. Must be applied before connections back to self are redirected.
 	if cfg.cfg.OutboundPortsExclude != "" {
@@ -509,6 +509,10 @@ func (cfg *IptablesConfigurator) Run() error {
 	cfg.handleOutboundIncludeRules(ipv6RangesInclude, cfg.ruleBuilder.AppendRuleV6, cfg.ruleBuilder.InsertRuleV6)
 
 	if redirectDNS {
+		// Jump from OUTPUT chain to ISTIOOUTPUT chain for all UDP traffic
+		cfg.ruleBuilder.AppendRule(iptableslog.JumpOutbound, constants.OUTPUT, constants.NAT, "-p", constants.UDP, "-j", constants.ISTIOOUTPUT)
+		cfg.ruleBuilder.AppendRule(iptableslog.JumpOutbound, constants.OUTPUT, constants.RAW, "-p", constants.UDP, "-j", constants.ISTIOOUTPUT)
+
 		HandleDNSUDP(
 			AppendOps, cfg.ruleBuilder, cfg.ext, &iptVer, &ipt6Ver,
 			cfg.cfg.ProxyUID, cfg.cfg.ProxyGID,
@@ -616,7 +620,7 @@ func HandleDNSUDP(
 		ext:      ext,
 		ops:      ops,
 		table:    constants.NAT,
-		chain:    constants.OUTPUT,
+		chain:    constants.ISTIOOUTPUT,
 		iptV:     iptV,
 		ipt6V:    ipt6V,
 	}
