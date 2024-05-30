@@ -29,7 +29,7 @@ import (
 	"istio.io/istio/pkg/util/sets"
 )
 
-var installLog = log.RegisterScope("install", "CNI install")
+var installLog = log.FindScope(constants.CNIAgentLogScope).WithLabels("plugin-install")
 
 type Installer struct {
 	cfg                *config.InstallConfig
@@ -192,7 +192,7 @@ func (in *Installer) sleepWatchInstall(ctx context.Context, installedBinFiles se
 	targets := append(
 		binPaths,
 		in.cfg.MountedCNINetDir,
-		constants.ServiceAccountPath,
+		in.cfg.K8sServiceAccountPath,
 	)
 	// Create file watcher before checking for installation
 	// so that no file modifications are missed while and after checking
