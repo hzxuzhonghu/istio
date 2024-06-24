@@ -352,7 +352,12 @@ func (cl *Client) addCRD(name string) {
 	if of, f := cl.filtersByGVK[resourceGVK]; f && of.ObjectFilter != nil {
 		extraFilter = of.ObjectFilter.Filter
 	}
-	filter := kubetypes.Filter{ObjectFilter: composeFilters(kube.FilterIfEnhancedFilteringEnabled(cl.client), cl.inRevision, extraFilter)}
+
+	var namespaceFilter kubetypes.DynamicObjectFilter
+	if !s.IsClusterScoped() {
+		namespaceFilter = kube.FilterIfEnhancedFilteringEnabled(cl.client)
+	}
+	filter := kubetypes.Filter{ObjectFilter: composeFilters(namespaceFilter, cl.inRevision, extraFilter)}
 
 	var kc kclient.Untyped
 	if s.IsBuiltin() {
@@ -430,7 +435,11 @@ func composeFilters(filter kubetypes.DynamicObjectFilter, extra ...func(obj any)
 }
 
 func (cl *Client) inRevision(obj any) bool {
-	return config.LabelsInRevision(obj.(controllers.Object).GetLabels(), cl.revision)
+	object := controllers.ExtractObject(obj)
+	if object == nil {
+		return false
+	}
+	return config.LabelsInRevision(object.GetLabels(), cl.revision)
 }
 
 func (cl *Client) onEvent(resourceGVK config.GroupVersionKind, old controllers.Object, curr controllers.Object, event model.Event) {

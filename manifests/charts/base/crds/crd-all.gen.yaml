@@ -129,7 +129,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -137,8 +141,8 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
               sha256:
                 description: SHA256 checksum that will be used to verify Wasm module
@@ -149,34 +153,68 @@ spec:
                 properties:
                   group:
                     description: group is the group of the target resource.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   kind:
                     description: kind is kind of the target resource.
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                     type: string
                   name:
                     description: name is the name of the target resource.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   namespace:
                     description: namespace is the namespace of the referent.
                     type: string
+                    x-kubernetes-validations:
+                    - message: cross namespace referencing is not currently supported
+                      rule: self.size() == 0
+                required:
+                - kind
+                - name
                 type: object
+                x-kubernetes-validations:
+                - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                  rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                    [''gateway.networking.k8s.io'',''Gateway'']]'
               targetRefs:
                 description: Optional.
                 items:
                   properties:
                     group:
                       description: group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                     kind:
                       description: kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                       type: string
                     name:
                       description: name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: namespace is the namespace of the referent.
                       type: string
+                      x-kubernetes-validations:
+                      - message: cross namespace referencing is not currently supported
+                        rule: self.size() == 0
+                  required:
+                  - kind
+                  - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                    rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                      [''gateway.networking.k8s.io'',''Gateway'']]'
                 type: array
               type:
                 description: |-
@@ -355,6 +393,10 @@ spec:
                                   description: The idle timeout for upstream connection
                                     pool connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConcurrentStreams:
                                   description: The maximum number of concurrent streams
                                     allowed for a peer on one HTTP/2 connection.
@@ -383,12 +425,24 @@ spec:
                                 connectTimeout:
                                   description: TCP connection timeout.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 idleTimeout:
                                   description: The idle timeout for TCP connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnectionDuration:
                                   description: The maximum duration of a connection.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnections:
                                   description: Maximum number of HTTP1 /TCP connections
                                     to a destination host.
@@ -402,6 +456,10 @@ spec:
                                       description: The time duration between keep-alive
                                         probes.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                     probes:
                                       description: Maximum number of keepalive probes
                                         to send without response before deciding the
@@ -414,6 +472,10 @@ spec:
                                         needs to be idle before keep-alive probes
                                         start being sent.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   type: object
                               type: object
                           type: object
@@ -476,6 +538,10 @@ spec:
                                     ttl:
                                       description: Lifetime of the cookie.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   required:
                                   - name
                                   type: object
@@ -579,12 +645,18 @@ spec:
                             warmupDurationSecs:
                               description: Represents the warmup duration of Service.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                           type: object
                         outlierDetection:
                           properties:
                             baseEjectionTime:
                               description: Minimum ejection duration.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             consecutive5xxErrors:
                               description: Number of 5xx errors before a host is ejected
                                 from the connection pool.
@@ -612,6 +684,9 @@ spec:
                             interval:
                               description: Time interval between ejection sweep analysis.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxEjectionPercent:
                               description: Maximum % of hosts in the load balancing
                                 pool for the upstream service that can be ejected.
@@ -662,6 +737,10 @@ spec:
                                         description: The idle timeout for upstream
                                           connection pool connections.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConcurrentStreams:
                                         description: The maximum number of concurrent
                                           streams allowed for a peer on one HTTP/2
@@ -692,12 +771,24 @@ spec:
                                       connectTimeout:
                                         description: TCP connection timeout.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       idleTimeout:
                                         description: The idle timeout for TCP connections.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConnectionDuration:
                                         description: The maximum duration of a connection.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConnections:
                                         description: Maximum number of HTTP1 /TCP
                                           connections to a destination host.
@@ -711,6 +802,10 @@ spec:
                                             description: The time duration between
                                               keep-alive probes.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                           probes:
                                             description: Maximum number of keepalive
                                               probes to send without response before
@@ -723,6 +818,10 @@ spec:
                                               needs to be idle before keep-alive probes
                                               start being sent.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                         type: object
                                     type: object
                                 type: object
@@ -786,6 +885,10 @@ spec:
                                           ttl:
                                             description: Lifetime of the cookie.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                         required:
                                         - name
                                         type: object
@@ -893,12 +996,20 @@ spec:
                                     description: Represents the warmup duration of
                                       Service.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                 type: object
                               outlierDetection:
                                 properties:
                                   baseEjectionTime:
                                     description: Minimum ejection duration.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                   consecutive5xxErrors:
                                     description: Number of 5xx errors before a host
                                       is ejected from the connection pool.
@@ -927,6 +1038,10 @@ spec:
                                     description: Time interval between ejection sweep
                                       analysis.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                   maxEjectionPercent:
                                     description: Maximum % of hosts in the load balancing
                                       pool for the upstream service that can be ejected.
@@ -1009,6 +1124,7 @@ spec:
                                     type: array
                                 type: object
                             type: object
+                          maxItems: 4096
                           type: array
                         proxyProtocol:
                           description: The upstream PROXY protocol settings.
@@ -1135,6 +1251,9 @@ spec:
                             description: The idle timeout for upstream connection
                               pool connections.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConcurrentStreams:
                             description: The maximum number of concurrent streams
                               allowed for a peer on one HTTP/2 connection.
@@ -1162,12 +1281,21 @@ spec:
                           connectTimeout:
                             description: TCP connection timeout.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           idleTimeout:
                             description: The idle timeout for TCP connections.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConnectionDuration:
                             description: The maximum duration of a connection.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConnections:
                             description: Maximum number of HTTP1 /TCP connections
                               to a destination host.
@@ -1181,6 +1309,9 @@ spec:
                                 description: The time duration between keep-alive
                                   probes.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                               probes:
                                 description: Maximum number of keepalive probes to
                                   send without response before deciding the connection
@@ -1193,6 +1324,9 @@ spec:
                                   to be idle before keep-alive probes start being
                                   sent.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                             type: object
                         type: object
                     type: object
@@ -1255,6 +1389,9 @@ spec:
                               ttl:
                                 description: Lifetime of the cookie.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                             required:
                             - name
                             type: object
@@ -1355,12 +1492,18 @@ spec:
                       warmupDurationSecs:
                         description: Represents the warmup duration of Service.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                     type: object
                   outlierDetection:
                     properties:
                       baseEjectionTime:
                         description: Minimum ejection duration.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       consecutive5xxErrors:
                         description: Number of 5xx errors before a host is ejected
                           from the connection pool.
@@ -1388,6 +1531,9 @@ spec:
                       interval:
                         description: Time interval between ejection sweep analysis.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxEjectionPercent:
                         description: Maximum % of hosts in the load balancing pool
                           for the upstream service that can be ejected.
@@ -1438,6 +1584,10 @@ spec:
                                   description: The idle timeout for upstream connection
                                     pool connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConcurrentStreams:
                                   description: The maximum number of concurrent streams
                                     allowed for a peer on one HTTP/2 connection.
@@ -1466,12 +1616,24 @@ spec:
                                 connectTimeout:
                                   description: TCP connection timeout.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 idleTimeout:
                                   description: The idle timeout for TCP connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnectionDuration:
                                   description: The maximum duration of a connection.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnections:
                                   description: Maximum number of HTTP1 /TCP connections
                                     to a destination host.
@@ -1485,6 +1647,10 @@ spec:
                                       description: The time duration between keep-alive
                                         probes.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                     probes:
                                       description: Maximum number of keepalive probes
                                         to send without response before deciding the
@@ -1497,6 +1663,10 @@ spec:
                                         needs to be idle before keep-alive probes
                                         start being sent.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   type: object
                               type: object
                           type: object
@@ -1559,6 +1729,10 @@ spec:
                                     ttl:
                                       description: Lifetime of the cookie.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   required:
                                   - name
                                   type: object
@@ -1662,12 +1836,18 @@ spec:
                             warmupDurationSecs:
                               description: Represents the warmup duration of Service.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                           type: object
                         outlierDetection:
                           properties:
                             baseEjectionTime:
                               description: Minimum ejection duration.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             consecutive5xxErrors:
                               description: Number of 5xx errors before a host is ejected
                                 from the connection pool.
@@ -1695,6 +1875,9 @@ spec:
                             interval:
                               description: Time interval between ejection sweep analysis.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxEjectionPercent:
                               description: Maximum % of hosts in the load balancing
                                 pool for the upstream service that can be ejected.
@@ -1774,6 +1957,7 @@ spec:
                               type: array
                           type: object
                       type: object
+                    maxItems: 4096
                     type: array
                   proxyProtocol:
                     description: The upstream PROXY protocol settings.
@@ -1869,7 +2053,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -1877,8 +2065,8 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
             required:
             - host
@@ -1968,6 +2156,10 @@ spec:
                                   description: The idle timeout for upstream connection
                                     pool connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConcurrentStreams:
                                   description: The maximum number of concurrent streams
                                     allowed for a peer on one HTTP/2 connection.
@@ -1996,12 +2188,24 @@ spec:
                                 connectTimeout:
                                   description: TCP connection timeout.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 idleTimeout:
                                   description: The idle timeout for TCP connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnectionDuration:
                                   description: The maximum duration of a connection.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnections:
                                   description: Maximum number of HTTP1 /TCP connections
                                     to a destination host.
@@ -2015,6 +2219,10 @@ spec:
                                       description: The time duration between keep-alive
                                         probes.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                     probes:
                                       description: Maximum number of keepalive probes
                                         to send without response before deciding the
@@ -2027,6 +2235,10 @@ spec:
                                         needs to be idle before keep-alive probes
                                         start being sent.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   type: object
                               type: object
                           type: object
@@ -2089,6 +2301,10 @@ spec:
                                     ttl:
                                       description: Lifetime of the cookie.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   required:
                                   - name
                                   type: object
@@ -2192,12 +2408,18 @@ spec:
                             warmupDurationSecs:
                               description: Represents the warmup duration of Service.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                           type: object
                         outlierDetection:
                           properties:
                             baseEjectionTime:
                               description: Minimum ejection duration.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             consecutive5xxErrors:
                               description: Number of 5xx errors before a host is ejected
                                 from the connection pool.
@@ -2225,6 +2447,9 @@ spec:
                             interval:
                               description: Time interval between ejection sweep analysis.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxEjectionPercent:
                               description: Maximum % of hosts in the load balancing
                                 pool for the upstream service that can be ejected.
@@ -2275,6 +2500,10 @@ spec:
                                         description: The idle timeout for upstream
                                           connection pool connections.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConcurrentStreams:
                                         description: The maximum number of concurrent
                                           streams allowed for a peer on one HTTP/2
@@ -2305,12 +2534,24 @@ spec:
                                       connectTimeout:
                                         description: TCP connection timeout.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       idleTimeout:
                                         description: The idle timeout for TCP connections.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConnectionDuration:
                                         description: The maximum duration of a connection.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConnections:
                                         description: Maximum number of HTTP1 /TCP
                                           connections to a destination host.
@@ -2324,6 +2565,10 @@ spec:
                                             description: The time duration between
                                               keep-alive probes.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                           probes:
                                             description: Maximum number of keepalive
                                               probes to send without response before
@@ -2336,6 +2581,10 @@ spec:
                                               needs to be idle before keep-alive probes
                                               start being sent.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                         type: object
                                     type: object
                                 type: object
@@ -2399,6 +2648,10 @@ spec:
                                           ttl:
                                             description: Lifetime of the cookie.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                         required:
                                         - name
                                         type: object
@@ -2506,12 +2759,20 @@ spec:
                                     description: Represents the warmup duration of
                                       Service.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                 type: object
                               outlierDetection:
                                 properties:
                                   baseEjectionTime:
                                     description: Minimum ejection duration.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                   consecutive5xxErrors:
                                     description: Number of 5xx errors before a host
                                       is ejected from the connection pool.
@@ -2540,6 +2801,10 @@ spec:
                                     description: Time interval between ejection sweep
                                       analysis.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                   maxEjectionPercent:
                                     description: Maximum % of hosts in the load balancing
                                       pool for the upstream service that can be ejected.
@@ -2622,6 +2887,7 @@ spec:
                                     type: array
                                 type: object
                             type: object
+                          maxItems: 4096
                           type: array
                         proxyProtocol:
                           description: The upstream PROXY protocol settings.
@@ -2748,6 +3014,9 @@ spec:
                             description: The idle timeout for upstream connection
                               pool connections.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConcurrentStreams:
                             description: The maximum number of concurrent streams
                               allowed for a peer on one HTTP/2 connection.
@@ -2775,12 +3044,21 @@ spec:
                           connectTimeout:
                             description: TCP connection timeout.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           idleTimeout:
                             description: The idle timeout for TCP connections.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConnectionDuration:
                             description: The maximum duration of a connection.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConnections:
                             description: Maximum number of HTTP1 /TCP connections
                               to a destination host.
@@ -2794,6 +3072,9 @@ spec:
                                 description: The time duration between keep-alive
                                   probes.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                               probes:
                                 description: Maximum number of keepalive probes to
                                   send without response before deciding the connection
@@ -2806,6 +3087,9 @@ spec:
                                   to be idle before keep-alive probes start being
                                   sent.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                             type: object
                         type: object
                     type: object
@@ -2868,6 +3152,9 @@ spec:
                               ttl:
                                 description: Lifetime of the cookie.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                             required:
                             - name
                             type: object
@@ -2968,12 +3255,18 @@ spec:
                       warmupDurationSecs:
                         description: Represents the warmup duration of Service.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                     type: object
                   outlierDetection:
                     properties:
                       baseEjectionTime:
                         description: Minimum ejection duration.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       consecutive5xxErrors:
                         description: Number of 5xx errors before a host is ejected
                           from the connection pool.
@@ -3001,6 +3294,9 @@ spec:
                       interval:
                         description: Time interval between ejection sweep analysis.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxEjectionPercent:
                         description: Maximum % of hosts in the load balancing pool
                           for the upstream service that can be ejected.
@@ -3051,6 +3347,10 @@ spec:
                                   description: The idle timeout for upstream connection
                                     pool connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConcurrentStreams:
                                   description: The maximum number of concurrent streams
                                     allowed for a peer on one HTTP/2 connection.
@@ -3079,12 +3379,24 @@ spec:
                                 connectTimeout:
                                   description: TCP connection timeout.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 idleTimeout:
                                   description: The idle timeout for TCP connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnectionDuration:
                                   description: The maximum duration of a connection.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnections:
                                   description: Maximum number of HTTP1 /TCP connections
                                     to a destination host.
@@ -3098,6 +3410,10 @@ spec:
                                       description: The time duration between keep-alive
                                         probes.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                     probes:
                                       description: Maximum number of keepalive probes
                                         to send without response before deciding the
@@ -3110,6 +3426,10 @@ spec:
                                         needs to be idle before keep-alive probes
                                         start being sent.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   type: object
                               type: object
                           type: object
@@ -3172,6 +3492,10 @@ spec:
                                     ttl:
                                       description: Lifetime of the cookie.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   required:
                                   - name
                                   type: object
@@ -3275,12 +3599,18 @@ spec:
                             warmupDurationSecs:
                               description: Represents the warmup duration of Service.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                           type: object
                         outlierDetection:
                           properties:
                             baseEjectionTime:
                               description: Minimum ejection duration.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             consecutive5xxErrors:
                               description: Number of 5xx errors before a host is ejected
                                 from the connection pool.
@@ -3308,6 +3638,9 @@ spec:
                             interval:
                               description: Time interval between ejection sweep analysis.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxEjectionPercent:
                               description: Maximum % of hosts in the load balancing
                                 pool for the upstream service that can be ejected.
@@ -3387,6 +3720,7 @@ spec:
                               type: array
                           type: object
                       type: object
+                    maxItems: 4096
                     type: array
                   proxyProtocol:
                     description: The upstream PROXY protocol settings.
@@ -3482,7 +3816,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -3490,8 +3828,8 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
             required:
             - host
@@ -3581,6 +3919,10 @@ spec:
                                   description: The idle timeout for upstream connection
                                     pool connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConcurrentStreams:
                                   description: The maximum number of concurrent streams
                                     allowed for a peer on one HTTP/2 connection.
@@ -3609,12 +3951,24 @@ spec:
                                 connectTimeout:
                                   description: TCP connection timeout.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 idleTimeout:
                                   description: The idle timeout for TCP connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnectionDuration:
                                   description: The maximum duration of a connection.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnections:
                                   description: Maximum number of HTTP1 /TCP connections
                                     to a destination host.
@@ -3628,6 +3982,10 @@ spec:
                                       description: The time duration between keep-alive
                                         probes.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                     probes:
                                       description: Maximum number of keepalive probes
                                         to send without response before deciding the
@@ -3640,6 +3998,10 @@ spec:
                                         needs to be idle before keep-alive probes
                                         start being sent.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   type: object
                               type: object
                           type: object
@@ -3702,6 +4064,10 @@ spec:
                                     ttl:
                                       description: Lifetime of the cookie.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   required:
                                   - name
                                   type: object
@@ -3805,12 +4171,18 @@ spec:
                             warmupDurationSecs:
                               description: Represents the warmup duration of Service.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                           type: object
                         outlierDetection:
                           properties:
                             baseEjectionTime:
                               description: Minimum ejection duration.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             consecutive5xxErrors:
                               description: Number of 5xx errors before a host is ejected
                                 from the connection pool.
@@ -3838,6 +4210,9 @@ spec:
                             interval:
                               description: Time interval between ejection sweep analysis.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxEjectionPercent:
                               description: Maximum % of hosts in the load balancing
                                 pool for the upstream service that can be ejected.
@@ -3888,6 +4263,10 @@ spec:
                                         description: The idle timeout for upstream
                                           connection pool connections.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConcurrentStreams:
                                         description: The maximum number of concurrent
                                           streams allowed for a peer on one HTTP/2
@@ -3918,12 +4297,24 @@ spec:
                                       connectTimeout:
                                         description: TCP connection timeout.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       idleTimeout:
                                         description: The idle timeout for TCP connections.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConnectionDuration:
                                         description: The maximum duration of a connection.
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid duration greater
+                                            than 1ms
+                                          rule: duration(self) >= duration('1ms')
                                       maxConnections:
                                         description: Maximum number of HTTP1 /TCP
                                           connections to a destination host.
@@ -3937,6 +4328,10 @@ spec:
                                             description: The time duration between
                                               keep-alive probes.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                           probes:
                                             description: Maximum number of keepalive
                                               probes to send without response before
@@ -3949,6 +4344,10 @@ spec:
                                               needs to be idle before keep-alive probes
                                               start being sent.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                         type: object
                                     type: object
                                 type: object
@@ -4012,6 +4411,10 @@ spec:
                                           ttl:
                                             description: Lifetime of the cookie.
                                             type: string
+                                            x-kubernetes-validations:
+                                            - message: must be a valid duration greater
+                                                than 1ms
+                                              rule: duration(self) >= duration('1ms')
                                         required:
                                         - name
                                         type: object
@@ -4119,12 +4522,20 @@ spec:
                                     description: Represents the warmup duration of
                                       Service.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                 type: object
                               outlierDetection:
                                 properties:
                                   baseEjectionTime:
                                     description: Minimum ejection duration.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                   consecutive5xxErrors:
                                     description: Number of 5xx errors before a host
                                       is ejected from the connection pool.
@@ -4153,6 +4564,10 @@ spec:
                                     description: Time interval between ejection sweep
                                       analysis.
                                     type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid duration greater than
+                                        1ms
+                                      rule: duration(self) >= duration('1ms')
                                   maxEjectionPercent:
                                     description: Maximum % of hosts in the load balancing
                                       pool for the upstream service that can be ejected.
@@ -4235,6 +4650,7 @@ spec:
                                     type: array
                                 type: object
                             type: object
+                          maxItems: 4096
                           type: array
                         proxyProtocol:
                           description: The upstream PROXY protocol settings.
@@ -4361,6 +4777,9 @@ spec:
                             description: The idle timeout for upstream connection
                               pool connections.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConcurrentStreams:
                             description: The maximum number of concurrent streams
                               allowed for a peer on one HTTP/2 connection.
@@ -4388,12 +4807,21 @@ spec:
                           connectTimeout:
                             description: TCP connection timeout.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           idleTimeout:
                             description: The idle timeout for TCP connections.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConnectionDuration:
                             description: The maximum duration of a connection.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           maxConnections:
                             description: Maximum number of HTTP1 /TCP connections
                               to a destination host.
@@ -4407,6 +4835,9 @@ spec:
                                 description: The time duration between keep-alive
                                   probes.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                               probes:
                                 description: Maximum number of keepalive probes to
                                   send without response before deciding the connection
@@ -4419,6 +4850,9 @@ spec:
                                   to be idle before keep-alive probes start being
                                   sent.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                             type: object
                         type: object
                     type: object
@@ -4481,6 +4915,9 @@ spec:
                               ttl:
                                 description: Lifetime of the cookie.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid duration greater than 1ms
+                                  rule: duration(self) >= duration('1ms')
                             required:
                             - name
                             type: object
@@ -4581,12 +5018,18 @@ spec:
                       warmupDurationSecs:
                         description: Represents the warmup duration of Service.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                     type: object
                   outlierDetection:
                     properties:
                       baseEjectionTime:
                         description: Minimum ejection duration.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       consecutive5xxErrors:
                         description: Number of 5xx errors before a host is ejected
                           from the connection pool.
@@ -4614,6 +5057,9 @@ spec:
                       interval:
                         description: Time interval between ejection sweep analysis.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxEjectionPercent:
                         description: Maximum % of hosts in the load balancing pool
                           for the upstream service that can be ejected.
@@ -4664,6 +5110,10 @@ spec:
                                   description: The idle timeout for upstream connection
                                     pool connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConcurrentStreams:
                                   description: The maximum number of concurrent streams
                                     allowed for a peer on one HTTP/2 connection.
@@ -4692,12 +5142,24 @@ spec:
                                 connectTimeout:
                                   description: TCP connection timeout.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 idleTimeout:
                                   description: The idle timeout for TCP connections.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnectionDuration:
                                   description: The maximum duration of a connection.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 maxConnections:
                                   description: Maximum number of HTTP1 /TCP connections
                                     to a destination host.
@@ -4711,6 +5173,10 @@ spec:
                                       description: The time duration between keep-alive
                                         probes.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                     probes:
                                       description: Maximum number of keepalive probes
                                         to send without response before deciding the
@@ -4723,6 +5189,10 @@ spec:
                                         needs to be idle before keep-alive probes
                                         start being sent.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   type: object
                               type: object
                           type: object
@@ -4785,6 +5255,10 @@ spec:
                                     ttl:
                                       description: Lifetime of the cookie.
                                       type: string
+                                      x-kubernetes-validations:
+                                      - message: must be a valid duration greater
+                                          than 1ms
+                                        rule: duration(self) >= duration('1ms')
                                   required:
                                   - name
                                   type: object
@@ -4888,12 +5362,18 @@ spec:
                             warmupDurationSecs:
                               description: Represents the warmup duration of Service.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                           type: object
                         outlierDetection:
                           properties:
                             baseEjectionTime:
                               description: Minimum ejection duration.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             consecutive5xxErrors:
                               description: Number of 5xx errors before a host is ejected
                                 from the connection pool.
@@ -4921,6 +5401,9 @@ spec:
                             interval:
                               description: Time interval between ejection sweep analysis.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxEjectionPercent:
                               description: Maximum % of hosts in the load balancing
                                 pool for the upstream service that can be ejected.
@@ -5000,6 +5483,7 @@ spec:
                               type: array
                           type: object
                       type: object
+                    maxItems: 4096
                     type: array
                   proxyProtocol:
                     description: The upstream PROXY protocol settings.
@@ -5095,7 +5579,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -5103,8 +5591,8 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
             required:
             - host
@@ -5394,17 +5882,34 @@ spec:
                   properties:
                     group:
                       description: group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                     kind:
                       description: kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                       type: string
                     name:
                       description: name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: namespace is the namespace of the referent.
                       type: string
+                      x-kubernetes-validations:
+                      - message: cross namespace referencing is not currently supported
+                        rule: self.size() == 0
+                  required:
+                  - kind
+                  - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                    rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                      [''gateway.networking.k8s.io'',''Gateway'']]'
                 type: array
               workloadSelector:
                 description: Criteria used to select the specific set of pods/VMs
@@ -5970,10 +6475,12 @@ spec:
               concurrency:
                 description: The number of worker threads to run.
                 format: int32
+                minimum: 0
                 nullable: true
                 type: integer
               environmentVariables:
                 additionalProperties:
+                  maxLength: 2048
                   type: string
                 description: Additional environment variables for the proxy.
                 type: object
@@ -5989,7 +6496,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -5997,8 +6508,8 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
             type: object
           status:
@@ -6614,6 +7125,9 @@ spec:
                         description: The idle timeout for upstream connection pool
                           connections.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConcurrentStreams:
                         description: The maximum number of concurrent streams allowed
                           for a peer on one HTTP/2 connection.
@@ -6640,12 +7154,21 @@ spec:
                       connectTimeout:
                         description: TCP connection timeout.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       idleTimeout:
                         description: The idle timeout for TCP connections.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConnectionDuration:
                         description: The maximum duration of a connection.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConnections:
                         description: Maximum number of HTTP1 /TCP connections to a
                           destination host.
@@ -6658,6 +7181,9 @@ spec:
                           interval:
                             description: The time duration between keep-alive probes.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           probes:
                             description: Maximum number of keepalive probes to send
                               without response before deciding the connection is dead.
@@ -6668,6 +7194,9 @@ spec:
                             description: The time duration a connection needs to be
                               idle before keep-alive probes start being sent.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                         type: object
                     type: object
                 type: object
@@ -6721,6 +7250,9 @@ spec:
                               description: The idle timeout for upstream connection
                                 pool connections.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConcurrentStreams:
                               description: The maximum number of concurrent streams
                                 allowed for a peer on one HTTP/2 connection.
@@ -6748,12 +7280,21 @@ spec:
                             connectTimeout:
                               description: TCP connection timeout.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             idleTimeout:
                               description: The idle timeout for TCP connections.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConnectionDuration:
                               description: The maximum duration of a connection.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConnections:
                               description: Maximum number of HTTP1 /TCP connections
                                 to a destination host.
@@ -6767,6 +7308,10 @@ spec:
                                   description: The time duration between keep-alive
                                     probes.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 probes:
                                   description: Maximum number of keepalive probes
                                     to send without response before deciding the connection
@@ -6779,6 +7324,10 @@ spec:
                                     to be idle before keep-alive probes start being
                                     sent.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                               type: object
                           type: object
                       type: object
@@ -7040,6 +7589,9 @@ spec:
                         description: The idle timeout for upstream connection pool
                           connections.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConcurrentStreams:
                         description: The maximum number of concurrent streams allowed
                           for a peer on one HTTP/2 connection.
@@ -7066,12 +7618,21 @@ spec:
                       connectTimeout:
                         description: TCP connection timeout.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       idleTimeout:
                         description: The idle timeout for TCP connections.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConnectionDuration:
                         description: The maximum duration of a connection.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConnections:
                         description: Maximum number of HTTP1 /TCP connections to a
                           destination host.
@@ -7084,6 +7645,9 @@ spec:
                           interval:
                             description: The time duration between keep-alive probes.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           probes:
                             description: Maximum number of keepalive probes to send
                               without response before deciding the connection is dead.
@@ -7094,6 +7658,9 @@ spec:
                             description: The time duration a connection needs to be
                               idle before keep-alive probes start being sent.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                         type: object
                     type: object
                 type: object
@@ -7147,6 +7714,9 @@ spec:
                               description: The idle timeout for upstream connection
                                 pool connections.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConcurrentStreams:
                               description: The maximum number of concurrent streams
                                 allowed for a peer on one HTTP/2 connection.
@@ -7174,12 +7744,21 @@ spec:
                             connectTimeout:
                               description: TCP connection timeout.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             idleTimeout:
                               description: The idle timeout for TCP connections.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConnectionDuration:
                               description: The maximum duration of a connection.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConnections:
                               description: Maximum number of HTTP1 /TCP connections
                                 to a destination host.
@@ -7193,6 +7772,10 @@ spec:
                                   description: The time duration between keep-alive
                                     probes.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 probes:
                                   description: Maximum number of keepalive probes
                                     to send without response before deciding the connection
@@ -7205,6 +7788,10 @@ spec:
                                     to be idle before keep-alive probes start being
                                     sent.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                               type: object
                           type: object
                       type: object
@@ -7466,6 +8053,9 @@ spec:
                         description: The idle timeout for upstream connection pool
                           connections.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConcurrentStreams:
                         description: The maximum number of concurrent streams allowed
                           for a peer on one HTTP/2 connection.
@@ -7492,12 +8082,21 @@ spec:
                       connectTimeout:
                         description: TCP connection timeout.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       idleTimeout:
                         description: The idle timeout for TCP connections.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConnectionDuration:
                         description: The maximum duration of a connection.
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid duration greater than 1ms
+                          rule: duration(self) >= duration('1ms')
                       maxConnections:
                         description: Maximum number of HTTP1 /TCP connections to a
                           destination host.
@@ -7510,6 +8109,9 @@ spec:
                           interval:
                             description: The time duration between keep-alive probes.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                           probes:
                             description: Maximum number of keepalive probes to send
                               without response before deciding the connection is dead.
@@ -7520,6 +8122,9 @@ spec:
                             description: The time duration a connection needs to be
                               idle before keep-alive probes start being sent.
                             type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid duration greater than 1ms
+                              rule: duration(self) >= duration('1ms')
                         type: object
                     type: object
                 type: object
@@ -7573,6 +8178,9 @@ spec:
                               description: The idle timeout for upstream connection
                                 pool connections.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConcurrentStreams:
                               description: The maximum number of concurrent streams
                                 allowed for a peer on one HTTP/2 connection.
@@ -7600,12 +8208,21 @@ spec:
                             connectTimeout:
                               description: TCP connection timeout.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             idleTimeout:
                               description: The idle timeout for TCP connections.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConnectionDuration:
                               description: The maximum duration of a connection.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             maxConnections:
                               description: Maximum number of HTTP1 /TCP connections
                                 to a destination host.
@@ -7619,6 +8236,10 @@ spec:
                                   description: The time duration between keep-alive
                                     probes.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                                 probes:
                                   description: Maximum number of keepalive probes
                                     to send without response before deciding the connection
@@ -7631,6 +8252,10 @@ spec:
                                     to be idle before keep-alive probes start being
                                     sent.
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid duration greater than
+                                      1ms
+                                    rule: duration(self) >= duration('1ms')
                               type: object
                           type: object
                       type: object
@@ -7925,7 +8550,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           type: array
@@ -7939,6 +8564,9 @@ spec:
                           description: Specifies how long the results of a preflight
                             request can be cached.
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid duration greater than 1ms
+                            rule: duration(self) >= duration('1ms')
                         unmatchedPreflights:
                           description: |-
                             Indicates whether preflight requests not matching the configured allowed origin shouldn't be forwarded to the upstream.
@@ -8056,10 +8684,16 @@ spec:
                           properties:
                             exponentialDelay:
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             fixedDelay:
                               description: Add a fixed delay before forwarding the
                                 request.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             percent:
                               description: Percentage of requests on which the delay
                                 will be injected (0-100).
@@ -8117,7 +8751,7 @@ spec:
                             description: 'HTTP Authority values are case-sensitive
                               and formatted as follows: - `exact: "value"` for exact
                               string match - `prefix: "value"` for prefix-based match
-                              - `regex: "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              - `regex: "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -8139,7 +8773,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           gateways:
@@ -8171,7 +8805,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: The header keys must be lowercase and use
@@ -8185,7 +8819,7 @@ spec:
                             description: 'HTTP Method values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -8207,7 +8841,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           name:
@@ -8242,7 +8876,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: Query parameters for matching.
@@ -8251,7 +8885,7 @@ spec:
                             description: 'URI Scheme values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -8273,7 +8907,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           sourceLabels:
@@ -8295,7 +8929,7 @@ spec:
                             description: 'URI to match values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -8317,7 +8951,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           withoutHeaders:
@@ -8343,7 +8977,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: withoutHeader has the same syntax with the
@@ -8495,6 +9129,9 @@ spec:
                           description: Timeout per attempt for a given request, including
                             the initial call and any retries.
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid duration greater than 1ms
+                            rule: duration(self) >= duration('1ms')
                         retryOn:
                           description: Specifies the conditions under which retry
                             takes place.
@@ -8521,7 +9158,7 @@ spec:
                             specified regex.
                           properties:
                             match:
-                              description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                              description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                               type: string
                             rewrite:
                               description: The string that should replace into matching
@@ -8603,6 +9240,9 @@ spec:
                     timeout:
                       description: Timeout for HTTP requests, default is disabled.
                       type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid duration greater than 1ms
+                        rule: duration(self) >= duration('1ms')
                   type: object
                 type: array
               tcp:
@@ -8878,7 +9518,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           type: array
@@ -8892,6 +9532,9 @@ spec:
                           description: Specifies how long the results of a preflight
                             request can be cached.
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid duration greater than 1ms
+                            rule: duration(self) >= duration('1ms')
                         unmatchedPreflights:
                           description: |-
                             Indicates whether preflight requests not matching the configured allowed origin shouldn't be forwarded to the upstream.
@@ -9009,10 +9652,16 @@ spec:
                           properties:
                             exponentialDelay:
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             fixedDelay:
                               description: Add a fixed delay before forwarding the
                                 request.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             percent:
                               description: Percentage of requests on which the delay
                                 will be injected (0-100).
@@ -9070,7 +9719,7 @@ spec:
                             description: 'HTTP Authority values are case-sensitive
                               and formatted as follows: - `exact: "value"` for exact
                               string match - `prefix: "value"` for prefix-based match
-                              - `regex: "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              - `regex: "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -9092,7 +9741,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           gateways:
@@ -9124,7 +9773,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: The header keys must be lowercase and use
@@ -9138,7 +9787,7 @@ spec:
                             description: 'HTTP Method values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -9160,7 +9809,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           name:
@@ -9195,7 +9844,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: Query parameters for matching.
@@ -9204,7 +9853,7 @@ spec:
                             description: 'URI Scheme values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -9226,7 +9875,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           sourceLabels:
@@ -9248,7 +9897,7 @@ spec:
                             description: 'URI to match values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -9270,7 +9919,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           withoutHeaders:
@@ -9296,7 +9945,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: withoutHeader has the same syntax with the
@@ -9448,6 +10097,9 @@ spec:
                           description: Timeout per attempt for a given request, including
                             the initial call and any retries.
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid duration greater than 1ms
+                            rule: duration(self) >= duration('1ms')
                         retryOn:
                           description: Specifies the conditions under which retry
                             takes place.
@@ -9474,7 +10126,7 @@ spec:
                             specified regex.
                           properties:
                             match:
-                              description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                              description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                               type: string
                             rewrite:
                               description: The string that should replace into matching
@@ -9556,6 +10208,9 @@ spec:
                     timeout:
                       description: Timeout for HTTP requests, default is disabled.
                       type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid duration greater than 1ms
+                        rule: duration(self) >= duration('1ms')
                   type: object
                 type: array
               tcp:
@@ -9831,7 +10486,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           type: array
@@ -9845,6 +10500,9 @@ spec:
                           description: Specifies how long the results of a preflight
                             request can be cached.
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid duration greater than 1ms
+                            rule: duration(self) >= duration('1ms')
                         unmatchedPreflights:
                           description: |-
                             Indicates whether preflight requests not matching the configured allowed origin shouldn't be forwarded to the upstream.
@@ -9962,10 +10620,16 @@ spec:
                           properties:
                             exponentialDelay:
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             fixedDelay:
                               description: Add a fixed delay before forwarding the
                                 request.
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid duration greater than 1ms
+                                rule: duration(self) >= duration('1ms')
                             percent:
                               description: Percentage of requests on which the delay
                                 will be injected (0-100).
@@ -10023,7 +10687,7 @@ spec:
                             description: 'HTTP Authority values are case-sensitive
                               and formatted as follows: - `exact: "value"` for exact
                               string match - `prefix: "value"` for prefix-based match
-                              - `regex: "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              - `regex: "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -10045,7 +10709,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           gateways:
@@ -10077,7 +10741,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: The header keys must be lowercase and use
@@ -10091,7 +10755,7 @@ spec:
                             description: 'HTTP Method values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -10113,7 +10777,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           name:
@@ -10148,7 +10812,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: Query parameters for matching.
@@ -10157,7 +10821,7 @@ spec:
                             description: 'URI Scheme values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -10179,7 +10843,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           sourceLabels:
@@ -10201,7 +10865,7 @@ spec:
                             description: 'URI to match values are case-sensitive and
                               formatted as follows: - `exact: "value"` for exact string
                               match - `prefix: "value"` for prefix-based match - `regex:
-                              "value"` for RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).'
+                              "value"` for [RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                             oneOf:
                             - not:
                                 anyOf:
@@ -10223,7 +10887,7 @@ spec:
                               prefix:
                                 type: string
                               regex:
-                                description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                 type: string
                             type: object
                           withoutHeaders:
@@ -10249,7 +10913,7 @@ spec:
                                 prefix:
                                   type: string
                                 regex:
-                                  description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                                  description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                                   type: string
                               type: object
                             description: withoutHeader has the same syntax with the
@@ -10401,6 +11065,9 @@ spec:
                           description: Timeout per attempt for a given request, including
                             the initial call and any retries.
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid duration greater than 1ms
+                            rule: duration(self) >= duration('1ms')
                         retryOn:
                           description: Specifies the conditions under which retry
                             takes place.
@@ -10427,7 +11094,7 @@ spec:
                             specified regex.
                           properties:
                             match:
-                              description: RE2 style regex-based match (https://github.com/google/re2/wiki/Syntax).
+                              description: '[RE2 style regex-based match](https://github.com/google/re2/wiki/Syntax).'
                               type: string
                             rewrite:
                               description: The string that should replace into matching
@@ -10509,6 +11176,9 @@ spec:
                     timeout:
                       description: Timeout for HTTP requests, default is disabled.
                       type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid duration greater than 1ms
+                        rule: duration(self) >= duration('1ms')
                   type: object
                 type: array
               tcp:
@@ -11660,7 +12330,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -11668,41 +12342,75 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
               targetRef:
                 properties:
                   group:
                     description: group is the group of the target resource.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   kind:
                     description: kind is kind of the target resource.
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                     type: string
                   name:
                     description: name is the name of the target resource.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   namespace:
                     description: namespace is the namespace of the referent.
                     type: string
+                    x-kubernetes-validations:
+                    - message: cross namespace referencing is not currently supported
+                      rule: self.size() == 0
+                required:
+                - kind
+                - name
                 type: object
+                x-kubernetes-validations:
+                - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                  rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                    [''gateway.networking.k8s.io'',''Gateway'']]'
               targetRefs:
                 description: Optional.
                 items:
                   properties:
                     group:
                       description: group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                     kind:
                       description: kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                       type: string
                     name:
                       description: name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: namespace is the namespace of the referent.
                       type: string
+                      x-kubernetes-validations:
+                      - message: cross namespace referencing is not currently supported
+                        rule: self.size() == 0
+                  required:
+                  - kind
+                  - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                    rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                      [''gateway.networking.k8s.io'',''Gateway'']]'
                 type: array
             type: object
           status:
@@ -11901,7 +12609,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -11909,41 +12621,75 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
               targetRef:
                 properties:
                   group:
                     description: group is the group of the target resource.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   kind:
                     description: kind is kind of the target resource.
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                     type: string
                   name:
                     description: name is the name of the target resource.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   namespace:
                     description: namespace is the namespace of the referent.
                     type: string
+                    x-kubernetes-validations:
+                    - message: cross namespace referencing is not currently supported
+                      rule: self.size() == 0
+                required:
+                - kind
+                - name
                 type: object
+                x-kubernetes-validations:
+                - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                  rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                    [''gateway.networking.k8s.io'',''Gateway'']]'
               targetRefs:
                 description: Optional.
                 items:
                   properties:
                     group:
                       description: group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                     kind:
                       description: kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                       type: string
                     name:
                       description: name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: namespace is the namespace of the referent.
                       type: string
+                      x-kubernetes-validations:
+                      - message: cross namespace referencing is not currently supported
+                        rule: self.size() == 0
+                  required:
+                  - kind
+                  - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                    rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                      [''gateway.networking.k8s.io'',''Gateway'']]'
                 type: array
             type: object
           status:
@@ -12033,14 +12779,22 @@ spec:
                       type: string
                   type: object
                 description: Port specific mutual TLS settings.
+                minProperties: 1
                 type: object
+                x-kubernetes-validations:
+                - message: port must be between 1-65535
+                  rule: self.all(key, 0 < int(key) && int(key) <= 65535)
               selector:
                 description: The selector determines the workloads to apply the PeerAuthentication
                   on.
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -12048,10 +12802,14 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
             type: object
+            x-kubernetes-validations:
+            - message: portLevelMtls requires selector
+              rule: (has(self.selector) && has(self.selector.matchLabels) && self.selector.matchLabels.size()
+                > 0) || !has(self.portLevelMtls)
           status:
             type: object
             x-kubernetes-preserve-unknown-fields: true
@@ -12112,14 +12870,22 @@ spec:
                       type: string
                   type: object
                 description: Port specific mutual TLS settings.
+                minProperties: 1
                 type: object
+                x-kubernetes-validations:
+                - message: port must be between 1-65535
+                  rule: self.all(key, 0 < int(key) && int(key) <= 65535)
               selector:
                 description: The selector determines the workloads to apply the PeerAuthentication
                   on.
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -12127,10 +12893,14 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
             type: object
+            x-kubernetes-validations:
+            - message: portLevelMtls requires selector
+              rule: (has(self.selector) && has(self.selector.matchLabels) && self.selector.matchLabels.size()
+                > 0) || !has(self.portLevelMtls)
           status:
             type: object
             x-kubernetes-preserve-unknown-fields: true
@@ -12183,6 +12953,7 @@ spec:
                       description: The list of JWT [audiences](https://tools.ietf.org/html/rfc7519#section-4.1.3)
                         that are allowed to access.
                       items:
+                        minLength: 1
                         type: string
                       type: array
                     forwardOriginalToken:
@@ -12192,6 +12963,7 @@ spec:
                     fromCookies:
                       description: List of cookie names from which JWT is expected.
                       items:
+                        minLength: 1
                         type: string
                       type: array
                     fromHeaders:
@@ -12200,6 +12972,7 @@ spec:
                         properties:
                           name:
                             description: The HTTP header name.
+                            minLength: 1
                             type: string
                           prefix:
                             description: The prefix that should be stripped before
@@ -12212,10 +12985,12 @@ spec:
                     fromParams:
                       description: List of query parameters from which JWT is expected.
                       items:
+                        minLength: 1
                         type: string
                       type: array
                     issuer:
                       description: Identifies the issuer that issued the JWT.
+                      minLength: 1
                       type: string
                     jwks:
                       description: JSON Web Key Set of public keys to validate signature
@@ -12224,11 +12999,21 @@ spec:
                     jwks_uri:
                       description: URL of the provider's public key set to validate
                         signature of the JWT.
+                      maxLength: 2048
+                      minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: url must have scheme http:// or https://
+                        rule: url(self).getScheme() in ['http', 'https']
                     jwksUri:
                       description: URL of the provider's public key set to validate
                         signature of the JWT.
+                      maxLength: 2048
+                      minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: url must have scheme http:// or https://
+                        rule: url(self).getScheme() in ['http', 'https']
                     outputClaimToHeaders:
                       description: This field specifies a list of operations to copy
                         the claim to HTTP headers on a successfully verified token.
@@ -12236,10 +13021,16 @@ spec:
                         properties:
                           claim:
                             description: The name of the claim to be copied from.
+                            minLength: 1
                             type: string
                           header:
                             description: The name of the header to be created.
+                            minLength: 1
+                            pattern: ^[-_A-Za-z0-9]+$
                             type: string
+                        required:
+                        - header
+                        - claim
                         type: object
                       type: array
                     outputPayloadToHeader:
@@ -12251,16 +13042,27 @@ spec:
                         by the PILOT_JWT_ENABLE_REMOTE_JWKS environment variable,
                         will spend waiting for the JWKS to be fetched.
                       type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid duration greater than 1ms
+                        rule: duration(self) >= duration('1ms')
                   required:
                   - issuer
                   type: object
+                  x-kubernetes-validations:
+                  - message: only one of jwks or jwksUri can be set
+                    rule: (has(self.jwksUri)?1:0)+(has(self.jwks_uri)?1:0)+(has(self.jwks)?1:0)<=1
+                maxItems: 4096
                 type: array
               selector:
                 description: Optional.
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -12268,43 +13070,80 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
               targetRef:
                 properties:
                   group:
                     description: group is the group of the target resource.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   kind:
                     description: kind is kind of the target resource.
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                     type: string
                   name:
                     description: name is the name of the target resource.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   namespace:
                     description: namespace is the namespace of the referent.
                     type: string
+                    x-kubernetes-validations:
+                    - message: cross namespace referencing is not currently supported
+                      rule: self.size() == 0
+                required:
+                - kind
+                - name
                 type: object
+                x-kubernetes-validations:
+                - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                  rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                    [''gateway.networking.k8s.io'',''Gateway'']]'
               targetRefs:
                 description: Optional.
                 items:
                   properties:
                     group:
                       description: group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                     kind:
                       description: kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                       type: string
                     name:
                       description: name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: namespace is the namespace of the referent.
                       type: string
+                      x-kubernetes-validations:
+                      - message: cross namespace referencing is not currently supported
+                        rule: self.size() == 0
+                  required:
+                  - kind
+                  - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                    rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                      [''gateway.networking.k8s.io'',''Gateway'']]'
                 type: array
             type: object
+            x-kubernetes-validations:
+            - message: only one of targetRefs or workloadSelector can be set
+              rule: (has(self.selector)?1:0)+(has(self.targetRef)?1:0)+(has(self.targetRefs)?1:0)<=1
           status:
             type: object
             x-kubernetes-preserve-unknown-fields: true
@@ -12330,6 +13169,7 @@ spec:
                       description: The list of JWT [audiences](https://tools.ietf.org/html/rfc7519#section-4.1.3)
                         that are allowed to access.
                       items:
+                        minLength: 1
                         type: string
                       type: array
                     forwardOriginalToken:
@@ -12339,6 +13179,7 @@ spec:
                     fromCookies:
                       description: List of cookie names from which JWT is expected.
                       items:
+                        minLength: 1
                         type: string
                       type: array
                     fromHeaders:
@@ -12347,6 +13188,7 @@ spec:
                         properties:
                           name:
                             description: The HTTP header name.
+                            minLength: 1
                             type: string
                           prefix:
                             description: The prefix that should be stripped before
@@ -12359,10 +13201,12 @@ spec:
                     fromParams:
                       description: List of query parameters from which JWT is expected.
                       items:
+                        minLength: 1
                         type: string
                       type: array
                     issuer:
                       description: Identifies the issuer that issued the JWT.
+                      minLength: 1
                       type: string
                     jwks:
                       description: JSON Web Key Set of public keys to validate signature
@@ -12371,11 +13215,21 @@ spec:
                     jwks_uri:
                       description: URL of the provider's public key set to validate
                         signature of the JWT.
+                      maxLength: 2048
+                      minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: url must have scheme http:// or https://
+                        rule: url(self).getScheme() in ['http', 'https']
                     jwksUri:
                       description: URL of the provider's public key set to validate
                         signature of the JWT.
+                      maxLength: 2048
+                      minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: url must have scheme http:// or https://
+                        rule: url(self).getScheme() in ['http', 'https']
                     outputClaimToHeaders:
                       description: This field specifies a list of operations to copy
                         the claim to HTTP headers on a successfully verified token.
@@ -12383,10 +13237,16 @@ spec:
                         properties:
                           claim:
                             description: The name of the claim to be copied from.
+                            minLength: 1
                             type: string
                           header:
                             description: The name of the header to be created.
+                            minLength: 1
+                            pattern: ^[-_A-Za-z0-9]+$
                             type: string
+                        required:
+                        - header
+                        - claim
                         type: object
                       type: array
                     outputPayloadToHeader:
@@ -12398,16 +13258,27 @@ spec:
                         by the PILOT_JWT_ENABLE_REMOTE_JWKS environment variable,
                         will spend waiting for the JWKS to be fetched.
                       type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid duration greater than 1ms
+                        rule: duration(self) >= duration('1ms')
                   required:
                   - issuer
                   type: object
+                  x-kubernetes-validations:
+                  - message: only one of jwks or jwksUri can be set
+                    rule: (has(self.jwksUri)?1:0)+(has(self.jwks_uri)?1:0)+(has(self.jwks)?1:0)<=1
+                maxItems: 4096
                 type: array
               selector:
                 description: Optional.
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -12415,43 +13286,80 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
               targetRef:
                 properties:
                   group:
                     description: group is the group of the target resource.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   kind:
                     description: kind is kind of the target resource.
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                     type: string
                   name:
                     description: name is the name of the target resource.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   namespace:
                     description: namespace is the namespace of the referent.
                     type: string
+                    x-kubernetes-validations:
+                    - message: cross namespace referencing is not currently supported
+                      rule: self.size() == 0
+                required:
+                - kind
+                - name
                 type: object
+                x-kubernetes-validations:
+                - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                  rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                    [''gateway.networking.k8s.io'',''Gateway'']]'
               targetRefs:
                 description: Optional.
                 items:
                   properties:
                     group:
                       description: group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                     kind:
                       description: kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                       type: string
                     name:
                       description: name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: namespace is the namespace of the referent.
                       type: string
+                      x-kubernetes-validations:
+                      - message: cross namespace referencing is not currently supported
+                        rule: self.size() == 0
+                  required:
+                  - kind
+                  - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                    rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                      [''gateway.networking.k8s.io'',''Gateway'']]'
                 type: array
             type: object
+            x-kubernetes-validations:
+            - message: only one of targetRefs or workloadSelector can be set
+              rule: (has(self.selector)?1:0)+(has(self.targetRef)?1:0)+(has(self.targetRefs)?1:0)<=1
           status:
             type: object
             x-kubernetes-preserve-unknown-fields: true
@@ -12651,6 +13559,9 @@ spec:
                     reportingInterval:
                       description: Optional.
                       type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid duration greater than 1ms
+                        rule: duration(self) >= duration('1ms')
                   type: object
                 type: array
               selector:
@@ -12658,7 +13569,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -12666,41 +13581,75 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
               targetRef:
                 properties:
                   group:
                     description: group is the group of the target resource.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   kind:
                     description: kind is kind of the target resource.
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                     type: string
                   name:
                     description: name is the name of the target resource.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   namespace:
                     description: namespace is the namespace of the referent.
                     type: string
+                    x-kubernetes-validations:
+                    - message: cross namespace referencing is not currently supported
+                      rule: self.size() == 0
+                required:
+                - kind
+                - name
                 type: object
+                x-kubernetes-validations:
+                - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                  rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                    [''gateway.networking.k8s.io'',''Gateway'']]'
               targetRefs:
                 description: Optional.
                 items:
                   properties:
                     group:
                       description: group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                     kind:
                       description: kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                       type: string
                     name:
                       description: name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: namespace is the namespace of the referent.
                       type: string
+                      x-kubernetes-validations:
+                      - message: cross namespace referencing is not currently supported
+                        rule: self.size() == 0
+                  required:
+                  - kind
+                  - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                    rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                      [''gateway.networking.k8s.io'',''Gateway'']]'
                 type: array
               tracing:
                 description: Optional.
@@ -12984,6 +13933,9 @@ spec:
                     reportingInterval:
                       description: Optional.
                       type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid duration greater than 1ms
+                        rule: duration(self) >= duration('1ms')
                   type: object
                 type: array
               selector:
@@ -12991,7 +13943,11 @@ spec:
                 properties:
                   matchLabels:
                     additionalProperties:
+                      maxLength: 63
                       type: string
+                      x-kubernetes-validations:
+                      - message: wildcard not allowed in label value match
+                        rule: '!self.contains(''*'')'
                     description: One or more labels that indicate a specific set of
                       pods/VMs on which a policy should be applied.
                     maxProperties: 4096
@@ -12999,41 +13955,75 @@ spec:
                     x-kubernetes-validations:
                     - message: wildcard not allowed in label key match
                       rule: self.all(key, !key.contains('*'))
-                    - message: wildcard not allowed in label value match
-                      rule: self.map(key, self[key]).all(v, !v.contains('*'))
+                    - message: key must not be empty
+                      rule: self.all(key, key.size() != 0)
                 type: object
               targetRef:
                 properties:
                   group:
                     description: group is the group of the target resource.
+                    maxLength: 253
+                    pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   kind:
                     description: kind is kind of the target resource.
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                     type: string
                   name:
                     description: name is the name of the target resource.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                   namespace:
                     description: namespace is the namespace of the referent.
                     type: string
+                    x-kubernetes-validations:
+                    - message: cross namespace referencing is not currently supported
+                      rule: self.size() == 0
+                required:
+                - kind
+                - name
                 type: object
+                x-kubernetes-validations:
+                - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                  rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                    [''gateway.networking.k8s.io'',''Gateway'']]'
               targetRefs:
                 description: Optional.
                 items:
                   properties:
                     group:
                       description: group is the group of the target resource.
+                      maxLength: 253
+                      pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                     kind:
                       description: kind is kind of the target resource.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
                       type: string
                     name:
                       description: name is the name of the target resource.
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     namespace:
                       description: namespace is the namespace of the referent.
                       type: string
+                      x-kubernetes-validations:
+                      - message: cross namespace referencing is not currently supported
+                        rule: self.size() == 0
+                  required:
+                  - kind
+                  - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: Support kinds are core/Service and gateway.networking.k8s.io/Gateway
+                    rule: '[self.group, self.kind] in [[''core'',''Service''], ['''',''Service''],
+                      [''gateway.networking.k8s.io'',''Gateway'']]'
                 type: array
               tracing:
                 description: Optional.

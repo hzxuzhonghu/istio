@@ -217,7 +217,7 @@ func TestGetAutoPassthroughSNIHosts(t *testing.T) {
 	}
 	instances := []gatewayWithInstances{{gateway: gateway, instances: gatewayServiceTargets}}
 	mgw := MergeGateways(instances, &Proxy{}, nil)
-	hosts := mgw.GetAutoPassthrughGatewaySNIHosts()
+	hosts := mgw.GetAutoPassthroughGatewaySNIHosts()
 	expectedHosts := sets.Set[string]{}
 	expectedHosts.InsertAll("a.apps.svc.cluster.local", "b.apps.svc.cluster.local")
 	if !hosts.Equals(expectedHosts) {
@@ -246,6 +246,14 @@ func makeConfig(name, namespace, host, portName, portProtocol string, portNumber
 		},
 	}
 	return c
+}
+
+func BenchmarkParseGatewayRDSRouteName(b *testing.B) {
+	for range b.N {
+		ParseGatewayRDSRouteName("https.443.app1.gw1.ns1")
+		ParseGatewayRDSRouteName("https.scooby.dooby.doo")
+		ParseGatewayRDSRouteName("http.80")
+	}
 }
 
 func TestParseGatewayRDSRouteName(t *testing.T) {

@@ -15,7 +15,6 @@
 package model
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -86,6 +85,9 @@ type MergedGateway struct {
 	// clusters to be sent to the workload
 	ContainsAutoPassthroughGateways bool
 
+	// AutoPassthroughSNIHosts
+	AutoPassthroughSNIHosts sets.Set[string]
+
 	// PortMap defines a mapping of targetPorts to the set of Service ports that reference them
 	PortMap GatewayPortMap
 
@@ -105,7 +107,7 @@ func (g *MergedGateway) HasAutoPassthroughGateways() bool {
 }
 
 // PrevMergedGateway describes previous state of the gateway.
-// Currently, it only contains information relevant for CDS.
+// Currently, it only contains information relevant for auto passthrough gateways used by CDS.
 type PrevMergedGateway struct {
 	ContainsAutoPassthroughGateways bool
 	AutoPassthroughSNIHosts         sets.Set[string]
@@ -361,7 +363,16 @@ func MergeGateways(gateways []gatewayWithInstances, proxy *Proxy, ps *PushContex
 			}
 		}
 	}
-
+	autoPassthroughSNIHosts := sets.Set[string]{}
+	if autoPassthrough {
+		for _, tls := range mergedServers {
+			for _, s := range tls.Servers {
+				if s.GetTls().GetMode() == networking.ServerTLSSettings_AUTO_PASSTHROUGH {
+					autoPassthroughSNIHosts.InsertAll(s.Hosts...)
+				}
+			}
+		}
+	}
 	return &MergedGateway{
 		MergedServers:                   mergedServers,
 		MergedQUICTransportServers:      mergedQUICServers,
@@ -371,26 +382,17 @@ func MergeGateways(gateways []gatewayWithInstances, proxy *Proxy, ps *PushContex
 		ServersByRouteName:              serversByRouteName,
 		HTTP3AdvertisingRoutes:          http3AdvertisingRoutes,
 		ContainsAutoPassthroughGateways: autoPassthrough,
+		AutoPassthroughSNIHosts:         autoPassthroughSNIHosts,
 		PortMap:                         getTargetPortMap(serversByRouteName),
 		VerifiedCertificateReferences:   verifiedCertificateReferences,
 	}
 }
 
-func (g *MergedGateway) GetAutoPassthrughGatewaySNIHosts() sets.Set[string] {
-	hosts := sets.Set[string]{}
-	if g == nil {
-		return hosts
+func (g *MergedGateway) GetAutoPassthroughGatewaySNIHosts() sets.Set[string] {
+	if g != nil {
+		return g.AutoPassthroughSNIHosts
 	}
-	if g.ContainsAutoPassthroughGateways {
-		for _, tls := range g.MergedServers {
-			for _, s := range tls.Servers {
-				if s.GetTls().GetMode() == networking.ServerTLSSettings_AUTO_PASSTHROUGH {
-					hosts.InsertAll(s.Hosts...)
-				}
-			}
-		}
-	}
-	return hosts
+	return sets.Set[string]{}
 }
 
 func udpSupportedPort(number uint32, instances []ServiceTarget) bool {
@@ -527,19 +529,28 @@ func gatewayRDSRouteName(server *networking.Server, portNumber uint32, cfg confi
 // ParseGatewayRDSRouteName is used by the EnvoyFilter patching logic to match
 // a specific route configuration to patch.
 func ParseGatewayRDSRouteName(name string) (portNumber int, portName, gatewayName string) {
-	parts := strings.Split(name, ".")
 	if strings.HasPrefix(name, "http.") {
 		// this is a http gateway. Parse port number and return empty string for rest
-		if len(parts) >= 2 {
-			portNumber, _ = strconv.Atoi(parts[1])
+		port := name[len("http."):]
+		portNumber, _ = strconv.Atoi(port)
+		return
+	} else if strings.HasPrefix(name, "https.") && strings.Count(name, ".") == 4 {
+		name = name[len("https."):]
+		// format: https.<port>.<port_name>.<gw name>.<gw namespace>
+		portNums, rest, ok := strings.Cut(name, ".")
+		if !ok {
+			return
 		}
-	} else if strings.HasPrefix(name, "https.") {
-		if len(parts) >= 5 {
-			portNumber, _ = strconv.Atoi(parts[1])
-			portName = parts[2]
-			// gateway name should be ns/name
-			gatewayName = parts[4] + "/" + parts[3]
+		portNumber, _ = strconv.Atoi(portNums)
+		portName, rest, ok = strings.Cut(rest, ".")
+		if !ok {
+			return
 		}
+		gwName, gwNs, ok := strings.Cut(rest, ".")
+		if !ok {
+			return
+		}
+		gatewayName = gwNs + "/" + gwName
 	}
 	return
 }
@@ -552,7 +563,7 @@ func sanitizeServerHostNamespace(server *networking.Server, namespace string) {
 		if strings.Contains(h, "/") {
 			parts := strings.Split(h, "/")
 			if parts[0] == "." {
-				server.Hosts[i] = fmt.Sprintf("%s/%s", namespace, parts[1])
+				server.Hosts[i] = namespace + "/" + parts[1] // format: %s/%s
 			} else if parts[0] == "*" {
 				if parts[1] == "*" {
 					server.Hosts = []string{"*"}
